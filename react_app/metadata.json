@@ -1,0 +1,7 @@
+{
+  "name": "Cofre de Fotos Sync",
+  "description": "Um cofre de fotos privado com sincronização para o Google Drive.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
