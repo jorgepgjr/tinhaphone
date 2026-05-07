@@ -20,6 +20,12 @@
       "languageVersion": "3.9"
     },
     {
+      "name": "archive",
+      "rootUri": "file:///Users/jorgeperes/.pub-cache/hosted/pub.dev/archive-4.0.9",
+      "packageUri": "lib/",
+      "languageVersion": "3.0"
+    },
+    {
       "name": "args",
       "rootUri": "file:///Users/jorgeperes/.pub-cache/hosted/pub.dev/args-2.7.0",
       "packageUri": "lib/",
@@ -260,6 +266,12 @@
       "languageVersion": "3.4"
     },
     {
+      "name": "image",
+      "rootUri": "file:///Users/jorgeperes/.pub-cache/hosted/pub.dev/image-4.8.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.0"
+    },
+    {
       "name": "io",
       "rootUri": "file:///Users/jorgeperes/.pub-cache/hosted/pub.dev/io-1.0.5",
       "packageUri": "lib/",
@@ -380,6 +392,12 @@
       "languageVersion": "3.2"
     },
     {
+      "name": "petitparser",
+      "rootUri": "file:///Users/jorgeperes/.pub-cache/hosted/pub.dev/petitparser-7.0.2",
+      "packageUri": "lib/",
+      "languageVersion": "3.8"
+    },
+    {
       "name": "platform",
       "rootUri": "file:///Users/jorgeperes/.pub-cache/hosted/pub.dev/platform-3.1.6",
       "packageUri": "lib/",
@@ -396,6 +414,12 @@
       "rootUri": "file:///Users/jorgeperes/.pub-cache/hosted/pub.dev/pool-1.5.2",
       "packageUri": "lib/",
       "languageVersion": "3.4"
+    },
+    {
+      "name": "posix",
+      "rootUri": "file:///Users/jorgeperes/.pub-cache/hosted/pub.dev/posix-6.5.0",
+      "packageUri": "lib/",
+      "languageVersion": "3.0"
     },
     {
       "name": "pub_semver",
@@ -648,6 +672,12 @@
       "rootUri": "file:///Users/jorgeperes/.pub-cache/hosted/pub.dev/xdg_directories-1.1.0",
       "packageUri": "lib/",
       "languageVersion": "3.3"
+    },
+    {
+      "name": "xml",
+      "rootUri": "file:///Users/jorgeperes/.pub-cache/hosted/pub.dev/xml-6.6.1",
+      "packageUri": "lib/",
+      "languageVersion": "3.8"
     },
     {
       "name": "yaml",

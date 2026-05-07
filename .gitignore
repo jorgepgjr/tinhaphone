@@ -1,9 +1,75 @@
-node_modules/
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains a workspace specific configuration for Visual Studio Code.
+.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
 build/
+/web/main.dart.js
+/web/main.dart.js.map
+/web/main.dart.wasm
+/web/main.dart.wasm.map
+/web/main.dart.mjs
+/web/main.dart.mjs.map
+/web/main.module.wasm
+/web/main.module.wasm.map
+/web/main.module.mjs
+/web/main.module.mjs.map
+/web/main.js
+/web/flutter_bootstrap.js
+/web/flutter_service_worker.js
+/web/flutter_service_worker.js.map
+/web/index.html
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# macOS
+.DS_Store
+
+# Android Studio will automatically add this to .gitignore.
+# It contains sensitive data and you should not share it.
+local.properties
+
+# Android related
+**/android/app/src/main/cpp/lib/
+
+# iOS related
+**/ios/Pods/
+**/ios/.symlinks/
+**/ios/Flutter/Flutter.podspec
+
+# Custom project rules
+node_modules/
 dist/
 coverage/
 keys/
-.DS_Store
-*.log
 .env*
 !.env.example

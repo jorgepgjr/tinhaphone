@@ -1,5 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
+import 'dart:io';
+import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
+import 'package:image/image.dart' as img;
+import 'package:shared_preferences/shared_preferences.dart';
+
+Future<String> _applyWatermarkToImage(Map<String, dynamic> params) async {
+  final String imagePath = params['imagePath'];
+  final Uint8List watermarkBytes = params['watermarkBytes'];
+
+  final originalBytes = await File(imagePath).readAsBytes();
+  final originalImage = img.decodeImage(originalBytes);
+  if (originalImage == null) return imagePath;
+
+  final watermarkImage = img.decodeImage(watermarkBytes);
+  if (watermarkImage == null) return imagePath;
+
+  final watermarkWidth = (originalImage.width * 0.25).toInt();
+  final resizedWatermark = img.copyResize(watermarkImage, width: watermarkWidth);
+
+  final paddingX = (originalImage.width * 0.05).toInt();
+  final paddingY = (originalImage.height * 0.05).toInt();
+  final dstX = originalImage.width - resizedWatermark.width - paddingX;
+  final dstY = originalImage.height - resizedWatermark.height - paddingY;
+
+  img.compositeImage(originalImage, resizedWatermark, dstX: dstX, dstY: dstY);
+
+  final resultBytes = img.encodeJpg(originalImage);
+  await File(imagePath).writeAsBytes(resultBytes);
+
+  return imagePath;
+}
 
 class CameraScreen extends StatefulWidget {
   final Function(XFile) onCapture;
@@ -15,7 +47,13 @@ class _CameraScreenState extends State<CameraScreen> {
   List<CameraDescription> _cameras = [];
   bool _isInit = false;
   bool _isTakingPicture = false;
+  bool _showBlink = false;
   int _selectedCameraIndex = 0;
+  
+  double _currentZoomLevel = 1.0;
+  double _minAvailableZoom = 1.0;
+  double _maxAvailableZoom = 1.0;
+  double _baseZoomLevel = 1.0;
 
   @override
   void initState() {
@@ -63,6 +101,11 @@ class _CameraScreenState extends State<CameraScreen> {
 
     try {
       await newController.initialize();
+      
+      _maxAvailableZoom = await newController.getMaxZoomLevel();
+      _minAvailableZoom = await newController.getMinZoomLevel();
+      _currentZoomLevel = _minAvailableZoom;
+
       if (mounted) {
         setState(() {
           _isInit = true;
@@ -71,6 +114,43 @@ class _CameraScreenState extends State<CameraScreen> {
     } catch (e) {
       print('Erro ao inicializar câmera: $e');
     }
+  }
+
+  Future<void> _setZoom(double zoom) async {
+    if (_controller == null || !_isInit) return;
+    final clampedZoom = zoom.clamp(_minAvailableZoom, _maxAvailableZoom);
+    if (clampedZoom != _currentZoomLevel) {
+      setState(() {
+        _currentZoomLevel = clampedZoom;
+      });
+      await _controller!.setZoomLevel(clampedZoom);
+    }
+  }
+
+  Widget _buildZoomButton(double zoom, String label) {
+    final bool isSelected = (_currentZoomLevel - zoom).abs() < 0.1;
+    return GestureDetector(
+      onTap: () => _setZoom(zoom),
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.amber : Colors.black54,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 1),
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? Colors.black : Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   void _switchCamera() {
@@ -103,15 +183,37 @@ class _CameraScreenState extends State<CameraScreen> {
 
     try {
       final XFile photo = await _controller!.takePicture();
+      
+      final prefs = await SharedPreferences.getInstance();
+      final applyWatermark = prefs.getBool('apply_watermark') ?? true;
+
+      if (applyWatermark) {
+        try {
+          final ByteData watermarkData = await rootBundle.load('lib/assets/guri.png');
+          final Uint8List watermarkBytes = watermarkData.buffer.asUint8List();
+          
+          await compute(_applyWatermarkToImage, {
+            'imagePath': photo.path,
+            'watermarkBytes': watermarkBytes,
+          });
+        } catch (e) {
+          print('Erro ao aplicar marca d\'água: $e');
+        }
+      }
+
       widget.onCapture(photo);
-      // Give visual feedback and reset taking picture state smoothly
+      
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Foto tirada com sucesso!'),
-            duration: Duration(seconds: 1),
-          ),
-        );
+        setState(() {
+          _showBlink = true;
+        });
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) {
+            setState(() {
+              _showBlink = false;
+            });
+          }
+        });
       }
     } catch (e) {
       print('Erro ao tirar foto: $e');
@@ -143,7 +245,31 @@ class _CameraScreenState extends State<CameraScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          Positioned.fill(child: CameraPreview(_controller!)),
+          Positioned.fill(
+            child: GestureDetector(
+              onScaleStart: (details) {
+                _baseZoomLevel = _currentZoomLevel;
+              },
+              onScaleUpdate: (details) async {
+                if (_controller == null || !_isInit) return;
+                
+                final zoomLevel = (_baseZoomLevel * details.scale)
+                    .clamp(_minAvailableZoom, _maxAvailableZoom);
+                
+                if (zoomLevel != _currentZoomLevel) {
+                  setState(() {
+                    _currentZoomLevel = zoomLevel;
+                  });
+                  await _controller!.setZoomLevel(_currentZoomLevel);
+                }
+              },
+              child: CameraPreview(_controller!),
+            ),
+          ),
+          if (_showBlink)
+            Positioned.fill(
+              child: Container(color: Colors.black.withOpacity(0.8)),
+            ),
           SafeArea(
             child: Align(
               alignment: Alignment.topLeft,
@@ -153,6 +279,44 @@ class _CameraScreenState extends State<CameraScreen> {
               ),
             ),
           ),
+          if (_maxAvailableZoom > _minAvailableZoom)
+            Positioned(
+              bottom: 120,
+              left: 20,
+              right: 20,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_cameras.isNotEmpty && _cameras[_selectedCameraIndex].lensDirection != CameraLensDirection.front)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _buildZoomButton(0.6, '.6x'),
+                        const SizedBox(width: 16),
+                        _buildZoomButton(1.0, '1x'),
+                        const SizedBox(width: 16),
+                        _buildZoomButton(2.0, '2x'),
+                      ],
+                    ),
+                  Row(
+                    children: [
+                      const Icon(Icons.zoom_out, color: Colors.white),
+                      Expanded(
+                        child: Slider(
+                          value: _currentZoomLevel,
+                          min: _minAvailableZoom,
+                          max: _maxAvailableZoom,
+                          activeColor: Colors.white,
+                          inactiveColor: Colors.white38,
+                          onChanged: _setZoom,
+                        ),
+                      ),
+                      const Icon(Icons.zoom_in, color: Colors.white),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           Align(
             alignment: Alignment.bottomCenter,
             child: Padding(

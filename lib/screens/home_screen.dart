@@ -9,6 +9,7 @@ import '../services/drive_service.dart';
 import '../models/photo.dart';
 import 'camera_screen.dart';
 import 'settings_screen.dart';
+import 'photo_viewer_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -25,6 +26,25 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Photo> _photos = [];
   bool _isConnected = false;
   bool _isSyncing = false;
+  
+  Set<String> _selectedPhotoIds = {};
+  bool get _isSelectionMode => _selectedPhotoIds.isNotEmpty;
+
+  void _toggleSelection(String id) {
+    setState(() {
+      if (_selectedPhotoIds.contains(id)) {
+        _selectedPhotoIds.remove(id);
+      } else {
+        _selectedPhotoIds.add(id);
+      }
+    });
+  }
+
+  void _clearSelection() {
+    setState(() {
+      _selectedPhotoIds.clear();
+    });
+  }
 
   @override
   void initState() {
@@ -60,6 +80,41 @@ class _HomeScreenState extends State<HomeScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Falha ao conectar no Google Drive: $e')),
       );
+    }
+  }
+
+  Future<void> _disconnectDrive() async {
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Desconectar do Drive?'),
+        content: const Text(
+          'Tem certeza que deseja deslogar sua conta do Google Drive?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Desconectar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await _driveService.signOut();
+      if (mounted) {
+        setState(() {
+          _isConnected = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Desconectado do Google Drive com sucesso.')),
+        );
+      }
     }
   }
 
@@ -148,6 +203,65 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<void> _syncSelected() async {
+    if (_isSyncing || _selectedPhotoIds.isEmpty) return;
+
+    setState(() {
+      _isSyncing = true;
+    });
+
+    final selectedPhotos = _photos
+        .where((p) => _selectedPhotoIds.contains(p.id) && (p.status == SyncStatus.pending || p.status == SyncStatus.error))
+        .toList();
+        
+    for (final photo in selectedPhotos) {
+      await _syncPhoto(photo);
+    }
+
+    setState(() {
+      _isSyncing = false;
+      _selectedPhotoIds.clear();
+    });
+  }
+
+  Future<void> _deleteSelected() async {
+    if (_selectedPhotoIds.isEmpty) return;
+    
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Excluir Fotos Selecionadas?'),
+        content: Text('Isso apagará permanentemente as ${_selectedPhotoIds.length} fotos selecionadas do seu dispositivo.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      for (final id in _selectedPhotoIds) {
+        await _dbService.deletePhoto(id);
+        final photo = _photos.firstWhere((p) => p.id == id);
+        final file = File(photo.localPath);
+        if (await file.exists()) {
+          await file.delete();
+        }
+      }
+      setState(() {
+        _selectedPhotoIds.clear();
+      });
+      await _loadPhotos();
+    }
+  }
+
   Future<void> _handleDelete(Photo photo) async {
     final bool? confirm = await showDialog<bool>(
       context: context,
@@ -221,16 +335,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          children: [
-            const Icon(Icons.cloud, color: Colors.indigo),
-            const SizedBox(width: 8),
-            const Text(
-              'Tinha Phone',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ],
+        title: const Text(
+          'TinhaPhone',
+          style: TextStyle(fontWeight: FontWeight.bold),
         ),
+        centerTitle: false,
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 8.0),
@@ -254,33 +363,32 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.only(right: 16.0),
             child: Center(
               child: _isConnected
-                  ? Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.check_circle,
-                            size: 16,
-                            color: Colors.green.shade700,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Conectado',
-                            style: TextStyle(
-                              color: Colors.green.shade700,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
+                  ? GestureDetector(
+                      onTap: _disconnectDrive,
+                      child: Tooltip(
+                        message: 'Conectado ao Drive (Toque para deslogar)',
+                        child: Stack(
+                          children: [
+                            const Icon(
+                              Icons.add_to_drive,
+                              color: Colors.indigo,
+                              size: 28,
                             ),
-                          ),
-                        ],
+                            Positioned(
+                              right: 0,
+                              bottom: 0,
+                              child: Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  color: Colors.green.shade500,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white, width: 1.5),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     )
                   : ElevatedButton.icon(
@@ -303,58 +411,6 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    '${_photos.length} foto${_photos.length != 1 ? 's' : ''} local${_photos.length != 1 ? 'is' : ''}',
-                    style: const TextStyle(color: Colors.grey),
-                  ),
-                  Row(
-                    children: [
-                      TextButton(
-                        onPressed:
-                            _photos.any((p) => p.status == SyncStatus.synced)
-                            ? _clearSynced
-                            : null,
-                        style: TextButton.styleFrom(
-                          foregroundColor: Colors.red,
-                        ),
-                        child: const Text('Limpar Sinc.'),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton.icon(
-                        onPressed:
-                            (_isSyncing ||
-                                !_photos.any(
-                                  (p) =>
-                                      p.status == SyncStatus.pending ||
-                                      p.status == SyncStatus.error,
-                                ))
-                            ? null
-                            : _syncAllPending,
-                        icon: _isSyncing
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.sync, size: 16),
-                        label: const Text('Sinc. Todas'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.indigo,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
             Expanded(
               child: _photos.isEmpty
                   ? Center(
@@ -391,8 +447,27 @@ class _HomeScreenState extends State<HomeScreen> {
                         final photo = _photos[index];
                         return PhotoCard(
                           photo: photo,
+                          isSelected: _selectedPhotoIds.contains(photo.id),
                           onSync: () => _syncPhoto(photo),
                           onDelete: () => _handleDelete(photo),
+                          onTap: () {
+                            if (_isSelectionMode) {
+                              _toggleSelection(photo.id);
+                            } else {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => PhotoViewerScreen(
+                                    photos: _photos,
+                                    initialIndex: index,
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                          onLongPress: () {
+                            _toggleSelection(photo.id);
+                          },
                         );
                       },
                     ),
@@ -412,6 +487,77 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: Colors.indigo,
         child: const Icon(Icons.camera_alt, color: Colors.white),
       ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_isSelectionMode)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: InkWell(
+                        onTap: _clearSelection,
+                        child: const Icon(Icons.close, color: Colors.grey, size: 20),
+                      ),
+                    ),
+                  Text(
+                    _isSelectionMode 
+                      ? '${_selectedPhotoIds.length} selecionadas'
+                      : '${_photos.length} foto${_photos.length != 1 ? 's' : ''}',
+                    style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (_isSelectionMode)
+                      TextButton(
+                        onPressed: _deleteSelected,
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.red,
+                        ),
+                        child: const Text('Excluir'),
+                      ),
+                    if (_isSelectionMode)
+                      const SizedBox(width: 4),
+                    Flexible(
+                      child: ElevatedButton.icon(
+                        onPressed: _isSelectionMode
+                            ? (_isSyncing || !_photos.any((p) => _selectedPhotoIds.contains(p.id) && (p.status == SyncStatus.pending || p.status == SyncStatus.error)) ? null : _syncSelected)
+                            : (_isSyncing || !_photos.any((p) => p.status == SyncStatus.pending || p.status == SyncStatus.error) ? null : _syncAllPending),
+                        icon: _isSyncing
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.sync, size: 16),
+                        label: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(_isSelectionMode ? 'Sinc. Selecionadas' : 'Sinc. Todas'),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.indigo,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -420,12 +566,18 @@ class PhotoCard extends StatelessWidget {
   final Photo photo;
   final VoidCallback onSync;
   final VoidCallback onDelete;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+  final bool isSelected;
 
   const PhotoCard({
     Key? key,
     required this.photo,
     required this.onSync,
     required this.onDelete,
+    required this.onTap,
+    required this.onLongPress,
+    this.isSelected = false,
   }) : super(key: key);
 
   Color _getStatusColor() {
@@ -486,48 +638,22 @@ class PhotoCard extends StatelessWidget {
             child: Material(
               color: Colors.transparent,
               child: InkWell(
-                onTap: () {
-                  showModalBottomSheet(
-                    context: context,
-                    builder: (context) => SafeArea(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (photo.status == SyncStatus.pending ||
-                              photo.status == SyncStatus.error)
-                            ListTile(
-                              leading: const Icon(
-                                Icons.cloud_upload,
-                                color: Colors.indigo,
-                              ),
-                              title: const Text('Tentar Sincronizar'),
-                              onTap: () {
-                                Navigator.pop(context);
-                                onSync();
-                              },
-                            ),
-                          ListTile(
-                            leading: const Icon(
-                              Icons.delete,
-                              color: Colors.red,
-                            ),
-                            title: const Text(
-                              'Excluir Foto',
-                              style: TextStyle(color: Colors.red),
-                            ),
-                            onTap: () {
-                              Navigator.pop(context);
-                              onDelete();
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
+                onTap: onTap,
+                onLongPress: onLongPress,
               ),
             ),
           ),
+          if (isSelected)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Container(
+                  color: Colors.blue.withOpacity(0.4),
+                  child: const Center(
+                    child: Icon(Icons.check_circle, color: Colors.white, size: 40),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

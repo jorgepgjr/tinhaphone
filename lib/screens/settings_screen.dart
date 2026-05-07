@@ -12,6 +12,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final DriveService _driveService = DriveService();
   bool _autoDelete = false;
+  bool _applyWatermark = true;
 
   @override
   void initState() {
@@ -23,6 +24,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _autoDelete = prefs.getBool('auto_delete') ?? false;
+      _applyWatermark = prefs.getBool('apply_watermark') ?? true;
     });
   }
 
@@ -31,6 +33,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await prefs.setBool('auto_delete', value);
     setState(() {
       _autoDelete = value;
+    });
+  }
+
+  Future<void> _toggleWatermark(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('apply_watermark', value);
+    setState(() {
+      _applyWatermark = value;
     });
   }
 
@@ -198,6 +208,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             activeColor: Colors.indigo,
             value: _autoDelete,
             onChanged: _toggleAutoDelete,
+          ),
+          SwitchListTile(
+            title: const Text('Aplicar Marca D\'água nas fotos'),
+            subtitle: const Text(
+              'A imagem \'lib/assets/guri.png\' será aplicada nas fotos tiradas.',
+            ),
+            activeColor: Colors.indigo,
+            value: _applyWatermark,
+            onChanged: _toggleWatermark,
           ),
           const Divider(),
           const Padding(
