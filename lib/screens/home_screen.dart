@@ -2,8 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:path_provider/path_provider.dart';
+import 'dart:async';
 import 'package:uuid/uuid.dart';
-
+import 'package:connectivity_plus/connectivity_plus.dart';
 import '../services/db_service.dart';
 import '../services/drive_service.dart';
 import '../models/photo.dart';
@@ -11,9 +12,10 @@ import 'camera_screen.dart';
 import 'settings_screen.dart';
 import 'photo_viewer_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:share_handler/share_handler.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({Key? key}) : super(key: key);
+  const HomeScreen({super.key});
 
   @override
   _HomeScreenState createState() => _HomeScreenState();
@@ -26,6 +28,8 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Photo> _photos = [];
   bool _isConnected = false;
   bool _isSyncing = false;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  StreamSubscription<SharedMedia>? _sharedMediaSubscription;
   
   Set<String> _selectedPhotoIds = {};
   bool get _isSelectionMode => _selectedPhotoIds.isNotEmpty;
@@ -51,6 +55,88 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _loadPhotos();
     _checkDriveConnection();
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen(_updateConnectionStatus);
+    _initShareHandler();
+  }
+
+  @override
+  void dispose() {
+    _connectivitySubscription?.cancel();
+    _sharedMediaSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _updateConnectionStatus(List<ConnectivityResult> results) {
+    if (results.contains(ConnectivityResult.wifi)) {
+      _syncScheduled();
+    }
+  }
+
+  Future<void> _syncScheduled() async {
+    if (_isSyncing) return;
+    
+    await _loadPhotos();
+    final scheduledPhotos = _photos.where((p) => p.status == SyncStatus.scheduled).toList();
+    
+    if (scheduledPhotos.isEmpty) return;
+
+    setState(() {
+      _isSyncing = true;
+    });
+
+    for (final photo in scheduledPhotos) {
+      await _syncPhoto(photo);
+    }
+
+    setState(() {
+      _isSyncing = false;
+    });
+  }
+
+  Future<void> _initShareHandler() async {
+    final handler = ShareHandlerPlatform.instance;
+    
+    final initialMedia = await handler.getInitialSharedMedia();
+    if (initialMedia != null) {
+      _processSharedMedia(initialMedia);
+    }
+
+    _sharedMediaSubscription = handler.sharedMediaStream.listen((SharedMedia media) {
+      if (!mounted) return;
+      _processSharedMedia(media);
+    });
+  }
+
+  Future<void> _processSharedMedia(SharedMedia media) async {
+    if (media.attachments == null || media.attachments!.isEmpty) return;
+
+    final appDir = await getApplicationDocumentsDirectory();
+    
+    for (final attachment in media.attachments!) {
+      if (attachment != null && attachment.path != null) {
+        final sourceFile = File(attachment.path!);
+        if (await sourceFile.exists()) {
+          final String uuid = const Uuid().v4();
+          final dt = DateTime.now();
+          final timestamp = dt.millisecondsSinceEpoch;
+          final String filename =
+              '${dt.year}_${dt.month.toString().padLeft(2, '0')}_${dt.day.toString().padLeft(2, '0')}_${timestamp}_${uuid.substring(0, 4)}.jpg';
+          final String localPath = '${appDir.path}/$filename';
+
+          final savedFile = await sourceFile.copy(localPath);
+
+          final photo = Photo(
+            id: uuid,
+            localPath: savedFile.path,
+            timestamp: DateTime.now().millisecondsSinceEpoch,
+          );
+
+          await _dbService.savePhoto(photo);
+        }
+      }
+    }
+    
+    await _loadPhotos();
   }
 
   Future<void> _loadPhotos() async {
@@ -118,7 +204,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _handleCapture(XFile file) async {
+  Future<Photo> _handleCapture(XFile file) async {
     // Save to local directory
     final appDir = await getApplicationDocumentsDirectory();
     final String uuid = const Uuid().v4();
@@ -140,6 +226,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     await _dbService.savePhoto(photo);
     await _loadPhotos();
+    return photo;
   }
 
   Future<void> _syncPhoto(Photo photo) async {
@@ -185,6 +272,26 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _syncAllPending() async {
     if (_isSyncing) return;
 
+    final prefs = await SharedPreferences.getInstance();
+    final wifiOnlySync = prefs.getBool('wifi_only_sync') ?? false;
+
+    if (wifiOnlySync) {
+      final connectivityResult = await Connectivity().checkConnectivity();
+      if (!connectivityResult.contains(ConnectivityResult.wifi)) {
+        final pendingPhotos = _photos.where((p) => p.status == SyncStatus.pending || p.status == SyncStatus.error).toList();
+        for (final photo in pendingPhotos) {
+          await _dbService.updatePhotoStatus(photo.id, SyncStatus.scheduled);
+        }
+        await _loadPhotos();
+        if (mounted && pendingPhotos.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Sincronização agendada para quando houver Wi-Fi.')),
+          );
+        }
+        return;
+      }
+    }
+
     setState(() {
       _isSyncing = true;
     });
@@ -206,15 +313,43 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _syncSelected() async {
     if (_isSyncing || _selectedPhotoIds.isEmpty) return;
 
+    final prefs = await SharedPreferences.getInstance();
+    final wifiOnlySync = prefs.getBool('wifi_only_sync') ?? false;
+
+    final selectedPhotos = _photos
+        .where((p) => _selectedPhotoIds.contains(p.id) && (p.status == SyncStatus.pending || p.status == SyncStatus.error || p.status == SyncStatus.scheduled))
+        .toList();
+
+    if (wifiOnlySync) {
+      final connectivityResult = await Connectivity().checkConnectivity();
+      if (!connectivityResult.contains(ConnectivityResult.wifi)) {
+        for (final photo in selectedPhotos) {
+          if (photo.status != SyncStatus.scheduled) {
+            await _dbService.updatePhotoStatus(photo.id, SyncStatus.scheduled);
+          }
+        }
+        await _loadPhotos();
+        if (mounted && selectedPhotos.isNotEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Sincronização agendada para quando houver Wi-Fi.')),
+          );
+        }
+        setState(() {
+          _selectedPhotoIds.clear();
+        });
+        return;
+      }
+    }
+
     setState(() {
       _isSyncing = true;
     });
 
-    final selectedPhotos = _photos
+    final photosToSync = _photos
         .where((p) => _selectedPhotoIds.contains(p.id) && (p.status == SyncStatus.pending || p.status == SyncStatus.error))
         .toList();
         
-    for (final photo in selectedPhotos) {
+    for (final photo in photosToSync) {
       await _syncPhoto(photo);
     }
 
@@ -294,42 +429,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _clearSynced() async {
-    final bool? confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Limpar Fotos Sincronizadas?'),
-        content: const Text(
-          'Isso apagará todas as fotos já sincronizadas do seu dispositivo.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Limpar'),
-          ),
-        ],
-      ),
-    );
 
-    if (confirm == true) {
-      final syncedPhotos = _photos
-          .where((p) => p.status == SyncStatus.synced)
-          .toList();
-      for (final photo in syncedPhotos) {
-        final file = File(photo.localPath);
-        if (await file.exists()) {
-          await file.delete();
-        }
-      }
-      await _dbService.clearSyncedPhotos();
-      await _loadPhotos();
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -450,11 +550,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           isSelected: _selectedPhotoIds.contains(photo.id),
                           onSync: () => _syncPhoto(photo),
                           onDelete: () => _handleDelete(photo),
-                          onTap: () {
+                          onTap: () async {
                             if (_isSelectionMode) {
                               _toggleSelection(photo.id);
                             } else {
-                              Navigator.push(
+                              await Navigator.push(
                                 context,
                                 MaterialPageRoute(
                                   builder: (context) => PhotoViewerScreen(
@@ -463,6 +563,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                                 ),
                               );
+                              _loadPhotos();
                             }
                           },
                           onLongPress: () {
@@ -530,8 +631,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     Flexible(
                       child: ElevatedButton.icon(
                         onPressed: _isSelectionMode
-                            ? (_isSyncing || !_photos.any((p) => _selectedPhotoIds.contains(p.id) && (p.status == SyncStatus.pending || p.status == SyncStatus.error)) ? null : _syncSelected)
-                            : (_isSyncing || !_photos.any((p) => p.status == SyncStatus.pending || p.status == SyncStatus.error) ? null : _syncAllPending),
+                            ? (_isSyncing || !_photos.any((p) => _selectedPhotoIds.contains(p.id) && (p.status == SyncStatus.pending || p.status == SyncStatus.error || p.status == SyncStatus.scheduled)) ? null : _syncSelected)
+                            : (_isSyncing || !_photos.any((p) => p.status == SyncStatus.pending || p.status == SyncStatus.error || p.status == SyncStatus.scheduled) ? null : _syncAllPending),
                         icon: _isSyncing
                             ? const SizedBox(
                                 width: 16,
@@ -571,19 +672,21 @@ class PhotoCard extends StatelessWidget {
   final bool isSelected;
 
   const PhotoCard({
-    Key? key,
+    super.key,
     required this.photo,
     required this.onSync,
     required this.onDelete,
     required this.onTap,
     required this.onLongPress,
     this.isSelected = false,
-  }) : super(key: key);
+  });
 
   Color _getStatusColor() {
     switch (photo.status) {
       case SyncStatus.pending:
         return Colors.grey.shade600;
+      case SyncStatus.scheduled:
+        return Colors.orange.shade500;
       case SyncStatus.syncing:
         return Colors.blue.shade500;
       case SyncStatus.synced:
@@ -597,6 +700,8 @@ class PhotoCard extends StatelessWidget {
     switch (photo.status) {
       case SyncStatus.pending:
         return Icons.cloud_off;
+      case SyncStatus.scheduled:
+        return Icons.access_time;
       case SyncStatus.syncing:
         return Icons.sync;
       case SyncStatus.synced:

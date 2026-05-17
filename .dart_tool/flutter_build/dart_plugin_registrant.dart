@@ -16,6 +16,7 @@ import 'package:google_sign_in_ios/google_sign_in_ios.dart' as google_sign_in_io
 import 'package:path_provider_foundation/path_provider_foundation.dart' as path_provider_foundation;
 import 'package:shared_preferences_foundation/shared_preferences_foundation.dart' as shared_preferences_foundation;
 import 'package:sqflite_darwin/sqflite_darwin.dart' as sqflite_darwin;
+import 'package:connectivity_plus/connectivity_plus.dart' as connectivity_plus;
 import 'package:path_provider_linux/path_provider_linux.dart' as path_provider_linux;
 import 'package:shared_preferences_linux/shared_preferences_linux.dart' as shared_preferences_linux;
 import 'package:google_sign_in_ios/google_sign_in_ios.dart' as google_sign_in_ios;
@@ -123,6 +124,15 @@ class _PluginRegistrant {
       }
 
     } else if (Platform.isLinux) {
+      try {
+        connectivity_plus.ConnectivityPlusLinuxPlugin.registerWith();
+      } catch (err) {
+        print(
+          '`connectivity_plus` threw an error: $err. '
+          'The app may not function as expected until you remove this plugin from pubspec.yaml'
+        );
+      }
+
       try {
         path_provider_linux.PathProviderLinux.registerWith();
       } catch (err) {

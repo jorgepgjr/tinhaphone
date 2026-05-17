@@ -1,4 +1,4 @@
-enum SyncStatus { pending, syncing, synced, error }
+enum SyncStatus { pending, scheduled, syncing, synced, error }
 
 class Photo {
   final String id;

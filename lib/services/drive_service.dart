@@ -3,6 +3,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart';
 
 class GoogleAuthClient extends http.BaseClient {
   final Map<String, String> _headers;
@@ -74,7 +75,7 @@ class DriveService {
         await _initDriveApi();
       }
     } catch (error) {
-      print('Error signing in: $error');
+      debugPrint('Error signing in: $error');
       rethrow;
     }
   }
@@ -92,13 +93,13 @@ class DriveService {
         await _initDriveApi();
       }
     } catch (error) {
-      print('Error signing in silently: $error');
+      debugPrint('Error signing in silently: $error');
     }
   }
 
   Future<void> _initDriveApi() async {
     if (_currentUser == null) {
-      print('DriveService: _currentUser is null in _initDriveApi');
+      debugPrint('DriveService: _currentUser is null in _initDriveApi');
       return;
     }
 
@@ -109,26 +110,26 @@ class DriveService {
 
       // Se não conseguimos, pedimos a permissão de forma interativa
       if (headers == null) {
-        print('DriveService: headers are null, requesting scopes...');
+        debugPrint('DriveService: headers are null, requesting scopes...');
         await _currentUser!.authorizationClient.authorizeScopes(_scopes);
         headers = await _currentUser!.authorizationClient.authorizationHeaders(
           _scopes,
         );
         if (headers == null) {
-          print('DriveService: user denied scopes');
+          debugPrint('DriveService: user denied scopes');
         }
       }
 
       if (headers == null) {
-        print('DriveService: still no headers after trying to authorize');
+        debugPrint('DriveService: still no headers after trying to authorize');
         return;
       }
 
       final client = GoogleAuthClient(headers);
       _driveApi = drive.DriveApi(client);
-      print('DriveService: _driveApi initialized successfully!');
+      debugPrint('DriveService: _driveApi initialized successfully!');
     } catch (e) {
-      print('DriveService: error initializing drive api: $e');
+      debugPrint('DriveService: error initializing drive api: $e');
     }
   }
 
@@ -150,7 +151,7 @@ class DriveService {
       );
       return fileList.files ?? [];
     } catch (e) {
-      print('Error getting folders: $e');
+      debugPrint('Error getting folders: $e');
       rethrow;
     }
   }
@@ -189,7 +190,7 @@ class DriveService {
       );
       return result.id;
     } catch (e) {
-      print('Upload error: $e');
+      debugPrint('Upload error: $e');
       rethrow;
     }
   }

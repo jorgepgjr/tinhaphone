@@ -129,6 +129,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.19.1"
+  connectivity_plus:
+    dependency: "direct main"
+    description:
+      name: connectivity_plus
+      sha256: b5e72753cf63becce2c61fd04dfe0f1c430cc5278b53a1342dc5ad839eab29ec
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.1.5"
+  connectivity_plus_platform_interface:
+    dependency: transitive
+    description:
+      name: connectivity_plus_platform_interface
+      sha256: "3c09627c536d22fd24691a905cdd8b14520de69da52c7a97499c8be5284a32ed"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.1.0"
   convert:
     dependency: transitive
     description:
@@ -169,6 +185,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.8"
+  dbus:
+    dependency: transitive
+    description:
+      name: dbus
+      sha256: d0c98dcd4f5169878b6cf8f6e0a52403a9dff371a3e2f019697accbf6f44a270
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.7.12"
   fake_async:
     dependency: transitive
     description:
@@ -440,6 +464,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.0"
+  nm:
+    dependency: transitive
+    description:
+      name: nm
+      sha256: "2c9aae4127bdc8993206464fcc063611e0e36e72018696cd9631023a31b24254"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.5.0"
   node_preamble:
     dependency: transitive
     description:
@@ -568,6 +600,38 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.2.1"
+  share_handler:
+    dependency: "direct main"
+    description:
+      name: share_handler
+      sha256: "0a6d007f0e44fbee27164adcd159ecbc88238864313f4e5c58161cae2180328d"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.0.25"
+  share_handler_android:
+    dependency: transitive
+    description:
+      name: share_handler_android
+      sha256: caf555b933dc72783aa37fef75688c7b86bd6f7bc17d80fbf585bc42f123cc8d
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.0.11"
+  share_handler_ios:
+    dependency: transitive
+    description:
+      name: share_handler_ios
+      sha256: cdc21f88f336a944157a8e9ceb191525cee3b082d6eb6c2082488e4f09dc3ece
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.0.15"
+  share_handler_platform_interface:
+    dependency: transitive
+    description:
+      name: share_handler_platform_interface
+      sha256: "7a4df95a87b326b2f07458d937f2281874567c364b7b7ebe4e7d50efaae5f106"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.0.6"
   shared_preferences:
     dependency: "direct main"
     description:

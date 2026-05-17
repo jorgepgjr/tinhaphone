@@ -4,6 +4,8 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>AppGroupId</key>
+	<string>group.com.tinho.meuapp.v2</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -32,6 +34,14 @@
 				<string>com.googleusercontent.apps.498748867390-va0jrk3qvrt4a3kqafqhp90660qsuu7r</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>ShareMedia-$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+			</array>
+		</dict>
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
@@ -57,6 +67,32 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+	</array>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>INSendMessageIntent</string>
+	</array>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Tinhaphone precisa de acesso à galeria para receber fotos compartilhadas.</string>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<false/>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>ShareHandler</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.file-url</string>
+				<string>public.image</string>
+				<string>public.text</string>
+				<string>public.movie</string>
+				<string>public.url</string>
+				<string>public.data</string>
+			</array>
+		</dict>
 	</array>
 </dict>
 </plist>

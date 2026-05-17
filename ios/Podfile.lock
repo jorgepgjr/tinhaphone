@@ -11,6 +11,8 @@ PODS:
     - PromisesObjC (~> 2.4)
   - camera_avfoundation (0.0.1):
     - Flutter
+  - connectivity_plus (0.0.1):
+    - Flutter
   - Flutter (1.0.0)
   - google_sign_in_ios (0.0.1):
     - Flutter
@@ -43,6 +45,14 @@ PODS:
     - Flutter
     - FlutterMacOS
   - PromisesObjC (2.4.0)
+  - share_handler_ios (0.0.14):
+    - Flutter
+    - share_handler_ios/share_handler_ios_models (= 0.0.14)
+    - share_handler_ios_models
+  - share_handler_ios/share_handler_ios_models (0.0.14):
+    - Flutter
+    - share_handler_ios_models
+  - share_handler_ios_models (0.0.9)
   - shared_preferences_foundation (0.0.1):
     - Flutter
     - FlutterMacOS
@@ -52,9 +62,12 @@ PODS:
 
 DEPENDENCIES:
   - camera_avfoundation (from `.symlinks/plugins/camera_avfoundation/ios`)
+  - connectivity_plus (from `.symlinks/plugins/connectivity_plus/ios`)
   - Flutter (from `Flutter`)
   - google_sign_in_ios (from `.symlinks/plugins/google_sign_in_ios/darwin`)
   - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
+  - share_handler_ios (from `.symlinks/plugins/share_handler_ios/ios`)
+  - share_handler_ios_models (from `.symlinks/plugins/share_handler_ios/ios/Models`)
   - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
   - sqflite_darwin (from `.symlinks/plugins/sqflite_darwin/darwin`)
 
@@ -71,12 +84,18 @@ SPEC REPOS:
 EXTERNAL SOURCES:
   camera_avfoundation:
     :path: ".symlinks/plugins/camera_avfoundation/ios"
+  connectivity_plus:
+    :path: ".symlinks/plugins/connectivity_plus/ios"
   Flutter:
     :path: Flutter
   google_sign_in_ios:
     :path: ".symlinks/plugins/google_sign_in_ios/darwin"
   path_provider_foundation:
     :path: ".symlinks/plugins/path_provider_foundation/darwin"
+  share_handler_ios:
+    :path: ".symlinks/plugins/share_handler_ios/ios"
+  share_handler_ios_models:
+    :path: ".symlinks/plugins/share_handler_ios/ios/Models"
   shared_preferences_foundation:
     :path: ".symlinks/plugins/shared_preferences_foundation/darwin"
   sqflite_darwin:
@@ -86,6 +105,7 @@ SPEC CHECKSUMS:
   AppAuth: 1c1a8afa7e12f2ec3a294d9882dfa5ab7d3cb063
   AppCheckCore: cc8fd0a3a230ddd401f326489c99990b013f0c4f
   camera_avfoundation: 968a9a5323c79a99c166ad9d7866bfd2047b5a9b
+  connectivity_plus: cb623214f4e1f6ef8fe7403d580fdad517d2f7dd
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   google_sign_in_ios: 000870aa06da9b28d1d0bf7ef70ff0213059dd28
   GoogleSignIn: fcee2257188d5eda57a5e2b6a715550ffff9206d
@@ -94,9 +114,11 @@ SPEC CHECKSUMS:
   GTMSessionFetcher: 5aea5ba6bd522a239e236100971f10cb71b96ab6
   path_provider_foundation: bb55f6dbba17d0dccd6737fe6f7f34fbd0376880
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
+  share_handler_ios: e2244e990f826b2c8eaa291ac3831569438ba0fb
+  share_handler_ios_models: fc638c9b4330dc7f082586c92aee9dfa0b87b871
   shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
   sqflite_darwin: 20b2a3a3b70e43edae938624ce550a3cbf66a3d0
 
-PODFILE CHECKSUM: 3c63482e143d1b91d2d2560aee9fb04ecc74ac7e
+PODFILE CHECKSUM: 2ff97ca3e48b85a43d5a7a8cac0035e97b321720
 
 COCOAPODS: 1.16.2

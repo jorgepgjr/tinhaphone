@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/photo.dart';
 
 class DbService {
@@ -51,7 +52,22 @@ class DbService {
       'photos',
       orderBy: 'timestamp DESC',
     );
-    return List.generate(maps.length, (i) => Photo.fromMap(maps[i]));
+    
+    final appDir = await getApplicationDocumentsDirectory();
+    
+    return List.generate(maps.length, (i) {
+      final photo = Photo.fromMap(maps[i]);
+      final filename = photo.localPath.split('/').last;
+      final correctPath = '${appDir.path}/$filename';
+      
+      return Photo(
+        id: photo.id,
+        localPath: correctPath,
+        timestamp: photo.timestamp,
+        status: photo.status,
+        driveFileId: photo.driveFileId,
+      );
+    });
   }
 
   Future<void> updatePhotoStatus(

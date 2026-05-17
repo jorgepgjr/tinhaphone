@@ -13,6 +13,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final DriveService _driveService = DriveService();
   bool _autoDelete = false;
   bool _applyWatermark = true;
+  bool _wifiOnlySync = false;
 
   @override
   void initState() {
@@ -25,6 +26,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _autoDelete = prefs.getBool('auto_delete') ?? false;
       _applyWatermark = prefs.getBool('apply_watermark') ?? true;
+      _wifiOnlySync = prefs.getBool('wifi_only_sync') ?? false;
     });
   }
 
@@ -41,6 +43,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await prefs.setBool('apply_watermark', value);
     setState(() {
       _applyWatermark = value;
+    });
+  }
+
+  Future<void> _toggleWifiOnlySync(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('wifi_only_sync', value);
+    setState(() {
+      _wifiOnlySync = value;
     });
   }
 
@@ -217,6 +227,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             activeColor: Colors.indigo,
             value: _applyWatermark,
             onChanged: _toggleWatermark,
+          ),
+          SwitchListTile(
+            title: const Text('Sincronizar apenas no Wi-Fi'),
+            subtitle: const Text(
+              'O sincronismo será agendado para quando houver uma conexão Wi-Fi ativa.',
+            ),
+            activeColor: Colors.indigo,
+            value: _wifiOnlySync,
+            onChanged: _toggleWifiOnlySync,
           ),
           const Divider(),
           const Padding(
