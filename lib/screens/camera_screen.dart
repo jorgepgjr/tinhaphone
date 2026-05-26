@@ -56,6 +56,8 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _showBlink = false;
   int _selectedCameraIndex = 0;
   Photo? _lastPhoto;
+  int _pendingCapturesCount = 0;
+  bool _isProcessingQueue = false;
 
   double _currentZoomLevel = 1.0;
   double _minAvailableZoom = 1.0;
@@ -70,8 +72,10 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _initCamera() async {
+    print('[CAMERA_LOG] _initCamera iniciado.');
     try {
       _cameras = await availableCameras();
+      print('[CAMERA_LOG] Câmeras disponíveis: ${_cameras.length}');
       if (_cameras.isEmpty) {
         throw Exception('Nenhuma câmera encontrada');
       }
@@ -83,53 +87,64 @@ class _CameraScreenState extends State<CameraScreen> {
       if (_selectedCameraIndex == -1) {
         _selectedCameraIndex = 0;
       }
+      print('[CAMERA_LOG] Câmera selecionada índice: $_selectedCameraIndex');
 
       await _startCamera(_cameras[_selectedCameraIndex]);
-    } catch (e) {
-      debugPrint('Erro na Câmera: $e');
+    } catch (e, stackTrace) {
+      print('[CAMERA_LOG] Erro na Câmera _initCamera: $e');
+      print('[CAMERA_LOG] StackTrace: $stackTrace');
     }
   }
 
   Future<void> _startCamera(CameraDescription camera) async {
+    print('[CAMERA_LOG] _startCamera iniciado para câmera: ${camera.name}');
     final previousController = _controller;
 
     final newController = CameraController(
       camera,
       ResolutionPreset.high,
       enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.jpeg,
     );
 
+    print('[CAMERA_LOG] Desfazendo controle de câmera anterior...');
     await previousController?.dispose();
 
     if (mounted) {
       setState(() {
         _controller = newController;
       });
+      print('[CAMERA_LOG] Novo CameraController atribuído ao estado.');
     }
 
     try {
+      print('[CAMERA_LOG] Inicializando CameraController...');
       await newController.initialize();
+      print('[CAMERA_LOG] CameraController inicializado com sucesso.');
 
       _maxAvailableZoom = await newController.getMaxZoomLevel();
       _minAvailableZoom = await newController.getMinZoomLevel();
+      print('[CAMERA_LOG] Zoom disponível: Min=$_minAvailableZoom, Max=$_maxAvailableZoom');
 
       _currentZoomLevel = 1.0.clamp(_minAvailableZoom, _maxAvailableZoom);
 
       try {
         await newController.setZoomLevel(_currentZoomLevel);
         await newController.setFlashMode(FlashMode.off);
-      } catch (e) {
-        debugPrint('Erro ao definir config inicial (zoom/flash): $e');
+        print('[CAMERA_LOG] Zoom inicial definido para $_currentZoomLevel e Flash desligado.');
+      } catch (e, stackTrace) {
+        print('[CAMERA_LOG] Erro ao definir config inicial (zoom/flash): $e');
+        print('[CAMERA_LOG] StackTrace: $stackTrace');
       }
 
       if (mounted) {
         setState(() {
           _isInit = true;
         });
+        print('[CAMERA_LOG] _isInit marcado como true.');
       }
-    } catch (e) {
-      debugPrint('Erro ao inicializar câmera: $e');
+    } catch (e, stackTrace) {
+      print('[CAMERA_LOG] Erro ao inicializar câmera em _startCamera: $e');
+      print('[CAMERA_LOG] StackTrace: $stackTrace');
     }
   }
 
@@ -225,75 +240,122 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Future<void> _takePicture() async {
-    if (_controller == null ||
-        !_controller!.value.isInitialized ||
-        _isTakingPicture) {
+    print('[CAMERA_LOG] Botão de tirar foto pressionado.');
+    print('[CAMERA_LOG] Estado: _controller=${_controller != null ? "não-nulo" : "nulo"}, '
+        'isInitialized=${_controller?.value.isInitialized}, '
+        'pendingCount=$_pendingCapturesCount');
+
+    if (_controller == null || !_controller!.value.isInitialized) {
+      print('[CAMERA_LOG] Abortando _takePicture: câmera não inicializada.');
       return;
     }
 
-    setState(() {
-      _isTakingPicture = true;
-    });
+    // Proporciona feedback tátil de clique de câmera imediatamente
+    HapticFeedback.mediumImpact();
 
-    try {
-      final XFile photo = await _controller!.takePicture();
+    // Incrementa contador de capturas pendentes na fila
+    _pendingCapturesCount++;
 
+    // Pisca a tela (shutter blink) imediatamente para simular a captura
+    if (mounted) {
+      setState(() {
+        _showBlink = true;
+      });
+      Future.delayed(const Duration(milliseconds: 50), () {
+        if (mounted) {
+          setState(() {
+            _showBlink = false;
+          });
+        }
+      });
+    }
+
+    // Dispara processamento da fila sem bloquear
+    _processCaptureQueue();
+  }
+
+  Future<void> _processCaptureQueue() async {
+    if (_isProcessingQueue) return;
+    _isProcessingQueue = true;
+
+    while (_pendingCapturesCount > 0) {
+      if (_controller == null || !_controller!.value.isInitialized) {
+        print('[CAMERA_LOG] Câmera não inicializada ao processar a fila. Interrompendo.');
+        break;
+      }
+
+      print('[CAMERA_LOG] Fila de Captura: Iniciando captura física. Pendentes: $_pendingCapturesCount');
       if (mounted) {
         setState(() {
-          _showBlink = true;
-          _isTakingPicture = false; // Unblock UI immediately
-        });
-        Future.delayed(const Duration(milliseconds: 10), () {
-          if (mounted) {
-            setState(() {
-              _showBlink = false;
-            });
-          }
+          _isTakingPicture = true;
         });
       }
 
-      // Process watermark and save to DB without blocking the UI
-      _processPhotoInBackground(photo);
-    } catch (e) {
-      debugPrint('Erro ao tirar foto: $e');
-      if (mounted) {
-        setState(() {
-          _isTakingPicture = false;
-        });
+      try {
+        final XFile photo = await _controller!.takePicture();
+        print('[CAMERA_LOG] Fila de Captura: Sucesso. Temp Path: ${photo.path}');
+        
+        // Processa salvamento e marca d'água de forma assíncrona
+        _processPhotoInBackground(photo);
+      } catch (e, stackTrace) {
+        print('[CAMERA_LOG] Fila de Captura: Erro na captura: $e');
+        print('[CAMERA_LOG] StackTrace: $stackTrace');
+      } finally {
+        _pendingCapturesCount--;
+        if (mounted) {
+          setState(() {
+            _isTakingPicture = _pendingCapturesCount > 0;
+          });
+        }
       }
     }
+
+    _isProcessingQueue = false;
+    print('[CAMERA_LOG] Fila de Captura: Finalizada.');
   }
 
   Future<void> _processPhotoInBackground(XFile photo) async {
+    print('[CAMERA_LOG] _processPhotoInBackground iniciado para ${photo.path}');
     try {
       final prefs = await SharedPreferences.getInstance();
       final applyWatermark = prefs.getBool('apply_watermark') ?? true;
+      print('[CAMERA_LOG] applyWatermark = $applyWatermark');
 
       if (applyWatermark) {
         try {
+          print('[CAMERA_LOG] Carregando watermark bytes...');
           final ByteData watermarkData = await rootBundle.load(
             'lib/assets/guri.png',
           );
           final Uint8List watermarkBytes = watermarkData.buffer.asUint8List();
 
+          print('[CAMERA_LOG] Aplicando watermark em background...');
           await compute(_applyWatermarkToImage, {
             'imagePath': photo.path,
             'watermarkBytes': watermarkBytes,
           });
-        } catch (e) {
-          debugPrint('Erro ao aplicar marca d\'água: $e');
+          print('[CAMERA_LOG] Watermark aplicada com sucesso.');
+        } catch (e, stackTrace) {
+          print('[CAMERA_LOG] Erro ao aplicar marca d\'água: $e');
+          print('[CAMERA_LOG] StackTrace: $stackTrace');
         }
       }
 
+      print('[CAMERA_LOG] Chamando widget.onCapture...');
       final photoObj = await widget.onCapture(photo);
+      print('[CAMERA_LOG] widget.onCapture retornado com id: ${photoObj.id}');
 
       if (mounted) {
         setState(() {
           _lastPhoto = photoObj;
         });
+        print('[CAMERA_LOG] _lastPhoto atualizado no estado da CameraScreen.');
+      } else {
+        print('[CAMERA_LOG] CameraScreen não está mais montada (mounted=false).');
       }
-    } catch (e) {
-      debugPrint('Erro no processamento da foto em background: $e');
+    } catch (e, stackTrace) {
+      print('[CAMERA_LOG] Erro no processamento da foto em background: $e');
+      print('[CAMERA_LOG] StackTrace: $stackTrace');
     }
   }
 
@@ -424,7 +486,10 @@ class _CameraScreenState extends State<CameraScreen> {
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(color: Colors.white, width: 2),
                               image: DecorationImage(
-                                image: FileImage(File(_lastPhoto!.localPath)),
+                                image: ResizeImage(
+                                  FileImage(File(_lastPhoto!.localPath)),
+                                  width: 150,
+                                ),
                                 fit: BoxFit.cover,
                               ),
                             ),

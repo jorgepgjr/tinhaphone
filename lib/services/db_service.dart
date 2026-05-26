@@ -22,7 +22,7 @@ class DbService {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE photos (
@@ -33,6 +33,26 @@ class DbService {
             driveFileId TEXT
           )
         ''');
+        await db.execute('''
+          CREATE TABLE logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp INTEGER NOT NULL,
+            message TEXT NOT NULL,
+            details TEXT
+          )
+        ''');
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute('''
+            CREATE TABLE logs (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              timestamp INTEGER NOT NULL,
+              message TEXT NOT NULL,
+              details TEXT
+            )
+          ''');
+        }
       },
     );
   }
@@ -96,5 +116,24 @@ class DbService {
       where: 'status = ?',
       whereArgs: [SyncStatus.synced.name],
     );
+  }
+
+  Future<void> saveLog(String message, String? details) async {
+    final db = await database;
+    await db.insert('logs', {
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'message': message,
+      'details': details,
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getLogs() async {
+    final db = await database;
+    return await db.query('logs', orderBy: 'timestamp DESC');
+  }
+
+  Future<void> clearLogs() async {
+    final db = await database;
+    await db.delete('logs');
   }
 }

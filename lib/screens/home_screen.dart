@@ -18,7 +18,7 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  _HomeScreenState createState() => _HomeScreenState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
@@ -31,7 +31,7 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   StreamSubscription<SharedMedia>? _sharedMediaSubscription;
   
-  Set<String> _selectedPhotoIds = {};
+  final Set<String> _selectedPhotoIds = {};
   bool get _isSelectionMode => _selectedPhotoIds.isNotEmpty;
 
   void _toggleSelection(String id) {
@@ -53,7 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadPhotos();
+    _loadPhotos().then((_) => _resetStuckPhotos());
     _checkDriveConnection();
     _connectivitySubscription = Connectivity().onConnectivityChanged.listen(_updateConnectionStatus);
     _initShareHandler();
@@ -113,8 +113,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final appDir = await getApplicationDocumentsDirectory();
     
     for (final attachment in media.attachments!) {
-      if (attachment != null && attachment.path != null) {
-        final sourceFile = File(attachment.path!);
+      if (attachment != null) {
+        final sourceFile = File(attachment.path);
         if (await sourceFile.exists()) {
           final String uuid = const Uuid().v4();
           final dt = DateTime.now();
@@ -140,10 +140,43 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadPhotos() async {
-    final photos = await _dbService.getPhotos();
-    setState(() {
-      _photos = photos;
-    });
+    print('[HOME_LOG] _loadPhotos iniciado');
+    try {
+      final photos = await _dbService.getPhotos();
+      if (mounted) {
+        setState(() {
+          _photos = photos;
+        });
+        print('[HOME_LOG] _loadPhotos concluído, total de fotos setadas no state: ${_photos.length}');
+      } else {
+        print('[HOME_LOG] _loadPhotos: widget não montado, ignorando setState');
+      }
+    } catch (e, stackTrace) {
+      print('[HOME_LOG] Erro ao carregar fotos: $e');
+      print('[HOME_LOG] StackTrace: $stackTrace');
+    }
+  }
+
+  Future<void> _resetStuckPhotos() async {
+    print('[HOME_LOG] Verificando se existem fotos travadas no estado "syncing"...');
+    try {
+      final photos = await _dbService.getPhotos();
+      final stuckPhotos = photos.where((p) => p.status == SyncStatus.syncing).toList();
+      
+      if (stuckPhotos.isNotEmpty) {
+        print('[HOME_LOG] Encontradas ${stuckPhotos.length} fotos travadas. Resetando para pending...');
+        for (final photo in stuckPhotos) {
+          await _dbService.updatePhotoStatus(photo.id, SyncStatus.pending);
+        }
+        print('[HOME_LOG] Todas as fotos travadas foram resetadas.');
+        await _loadPhotos();
+      } else {
+        print('[HOME_LOG] Nenhuma foto travada encontrada.');
+      }
+    } catch (e, stackTrace) {
+      print('[HOME_LOG] Erro ao resetar fotos travadas: $e');
+      print('[HOME_LOG] StackTrace: $stackTrace');
+    }
   }
 
   Future<void> _checkDriveConnection() async {
@@ -205,28 +238,43 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<Photo> _handleCapture(XFile file) async {
-    // Save to local directory
-    final appDir = await getApplicationDocumentsDirectory();
-    final String uuid = const Uuid().v4();
+    print('[HOME_LOG] _handleCapture iniciado para file: ${file.path}');
+    try {
+      // Save to local directory
+      final appDir = await getApplicationDocumentsDirectory();
+      final String uuid = const Uuid().v4();
 
-    final dt = DateTime.now();
-    final timestamp = dt.millisecondsSinceEpoch;
-    final String filename =
-        '${dt.year}_${dt.month.toString().padLeft(2, '0')}_${dt.day.toString().padLeft(2, '0')}_$timestamp.jpg';
+      final dt = DateTime.now();
+      final timestamp = dt.millisecondsSinceEpoch;
+      final String filename =
+          '${dt.year}_${dt.month.toString().padLeft(2, '0')}_${dt.day.toString().padLeft(2, '0')}_$timestamp.jpg';
 
-    final String localPath = '${appDir.path}/$filename';
+      final String localPath = '${appDir.path}/$filename';
+      print('[HOME_LOG] Copiando arquivo temporário para localPath: $localPath');
 
-    final savedFile = await File(file.path).copy(localPath);
+      final savedFile = await File(file.path).copy(localPath);
+      print('[HOME_LOG] Arquivo copiado com sucesso. Existe? ${await savedFile.exists()}');
 
-    final photo = Photo(
-      id: uuid,
-      localPath: savedFile.path,
-      timestamp: DateTime.now().millisecondsSinceEpoch,
-    );
+      final photo = Photo(
+        id: uuid,
+        localPath: savedFile.path,
+        timestamp: DateTime.now().millisecondsSinceEpoch,
+      );
 
-    await _dbService.savePhoto(photo);
-    await _loadPhotos();
-    return photo;
+      print('[HOME_LOG] Salvando foto no banco de dados...');
+      await _dbService.savePhoto(photo);
+      print('[HOME_LOG] Foto salva no banco com id: ${photo.id}');
+
+      print('[HOME_LOG] Carregando fotos atualizadas...');
+      await _loadPhotos();
+      print('[HOME_LOG] Fotos recarregadas. Total no cofre: ${_photos.length}');
+
+      return photo;
+    } catch (e, stackTrace) {
+      print('[HOME_LOG] Erro em _handleCapture: $e');
+      print('[HOME_LOG] StackTrace: $stackTrace');
+      rethrow;
+    }
   }
 
   Future<void> _syncPhoto(Photo photo) async {
@@ -264,6 +312,17 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       print('Sync Error: $e');
       await _dbService.updatePhotoStatus(photo.id, SyncStatus.error);
+      try {
+        final connectivityResult = await Connectivity().checkConnectivity();
+        final connectionDetails = 'Conexão: $connectivityResult';
+        final fileName = photo.localPath.split('/').last;
+        await _dbService.saveLog(
+          'Erro de Sincronismo (Foto: $fileName)',
+          'Erro: $e\n$connectionDetails\nTimestamp: ${DateTime.now()}',
+        );
+      } catch (logErr) {
+        print('Erro ao registrar log de erro: $logErr');
+      }
     } finally {
       await _loadPhotos();
     }
@@ -721,6 +780,7 @@ class PhotoCard extends StatelessWidget {
           Image.file(
             File(photo.localPath),
             fit: BoxFit.cover,
+            cacheWidth: 300,
             errorBuilder: (context, error, stackTrace) => Container(
               color: Colors.grey.shade200,
               child: const Icon(Icons.broken_image, color: Colors.grey),
@@ -732,7 +792,7 @@ class PhotoCard extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: _getStatusColor().withOpacity(0.9),
+                color: _getStatusColor().withValues(alpha: 0.9),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Icon(_getStatusIcon(), size: 12, color: Colors.white),
@@ -752,7 +812,7 @@ class PhotoCard extends StatelessWidget {
             Positioned.fill(
               child: IgnorePointer(
                 child: Container(
-                  color: Colors.blue.withOpacity(0.4),
+                  color: Colors.blue.withValues(alpha: 0.4),
                   child: const Center(
                     child: Icon(Icons.check_circle, color: Colors.white, size: 40),
                   ),

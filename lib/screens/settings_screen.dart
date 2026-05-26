@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/drive_service.dart';
+import '../services/db_service.dart';
+import 'error_logs_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -258,6 +260,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             trailing: const Icon(Icons.edit, size: 20, color: Colors.grey),
             onTap: _showFolderSelectionDialog,
+          ),
+          const Divider(),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              'Ferramentas de Desenvolvedor',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Colors.indigo,
+              ),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.list_alt, color: Colors.indigo),
+            title: const Text('Logs de Erro'),
+            subtitle: const Text('Visualizar logs de erros de sincronização.'),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const ErrorLogsScreen(),
+                ),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.bug_report, color: Colors.red),
+            title: const Text('Gerar Erro de Teste'),
+            subtitle: const Text('Gera um erro simulado para registrar nos logs.'),
+            onTap: () async {
+              final dbService = DbService();
+              await dbService.saveLog(
+                'Erro de Teste Manual',
+                'Este é um erro de teste simulado criado pelo usuário nas configurações.',
+              );
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Log de erro de teste registrado!')),
+                );
+              }
+            },
           ),
         ],
       ),
