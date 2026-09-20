@@ -51,6 +51,11 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Tinhaphone needs camera access to capture photos.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Tinhaphone needs microphone access for video capture.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>

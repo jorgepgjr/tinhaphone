@@ -45,9 +45,9 @@ class _ErrorLogsScreenState extends State<ErrorLogsScreen> {
         _isLoading = false;
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao carregar logs: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Erro ao carregar logs: $e')));
       }
     }
   }
@@ -88,7 +88,10 @@ class _ErrorLogsScreenState extends State<ErrorLogsScreen> {
           TextButton(
             style: TextButton.styleFrom(foregroundColor: Colors.red),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Limpar Tudo', style: TextStyle(fontWeight: FontWeight.bold)),
+            child: const Text(
+              'Limpar Tudo',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),
@@ -166,7 +169,10 @@ class _ErrorLogsScreenState extends State<ErrorLogsScreen> {
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.copy, color: Colors.indigoAccent),
+                        icon: const Icon(
+                          Icons.copy,
+                          color: Colors.indigoAccent,
+                        ),
                         onPressed: () => _copyToClipboard(
                           'Título: $message\nData: $timestampStr\nDetalhes:\n$details',
                         ),
@@ -191,7 +197,10 @@ class _ErrorLogsScreenState extends State<ErrorLogsScreen> {
                       const SizedBox(height: 6),
                       Text(
                         timestampStr,
-                        style: const TextStyle(color: Colors.white, fontSize: 15),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                        ),
                       ),
                       const SizedBox(height: 20),
                       const Text(
@@ -297,125 +306,127 @@ class _ErrorLogsScreenState extends State<ErrorLogsScreen> {
           Expanded(
             child: _isLoading
                 ? const Center(
-                    child: CircularProgressIndicator(color: Colors.indigoAccent),
+                    child: CircularProgressIndicator(
+                      color: Colors.indigoAccent,
+                    ),
                   )
                 : _filteredLogs.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(
-                              Icons.check_circle_outline,
-                              size: 72,
-                              color: Colors.green,
-                            ),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'Nenhum erro registrado!',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              _searchController.text.isNotEmpty
-                                  ? 'Nenhum resultado para a busca'
-                                  : 'Tudo funcionando perfeitamente.',
-                              style: const TextStyle(
-                                color: Colors.white38,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.check_circle_outline,
+                          size: 72,
+                          color: Colors.green,
                         ),
-                      )
-                    : RefreshIndicator(
-                        color: Colors.indigoAccent,
-                        onRefresh: _loadLogs,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          itemCount: _filteredLogs.length,
-                          itemBuilder: (context, index) {
-                            final log = _filteredLogs[index];
-                            final timestamp = log['timestamp'] as int;
-                            final message = log['message'] ?? 'Sem Título';
-                            final details = log['details'] ?? 'Sem Detalhes';
-                            final dateStr = _formatTimestamp(timestamp);
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Nenhum erro registrado!',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _searchController.text.isNotEmpty
+                              ? 'Nenhum resultado para a busca'
+                              : 'Tudo funcionando perfeitamente.',
+                          style: const TextStyle(
+                            color: Colors.white38,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : RefreshIndicator(
+                    color: Colors.indigoAccent,
+                    onRefresh: _loadLogs,
+                    child: ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: _filteredLogs.length,
+                      itemBuilder: (context, index) {
+                        final log = _filteredLogs[index];
+                        final timestamp = log['timestamp'] as int;
+                        final message = log['message'] ?? 'Sem Título';
+                        final details = log['details'] ?? 'Sem Detalhes';
+                        final dateStr = _formatTimestamp(timestamp);
 
-                            return Card(
-                              color: const Color(0xFF1E1E2E),
-                              margin: const EdgeInsets.only(bottom: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(12),
-                                onTap: () => _showLogDetails(log),
-                                child: Container(
-                                  decoration: const BoxDecoration(
-                                    border: Border(
-                                      left: BorderSide(
-                                        color: Colors.redAccent,
-                                        width: 4,
-                                      ),
-                                    ),
-                                  ),
-                                  padding: const EdgeInsets.all(16),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              message,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 15,
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          const Icon(
-                                            Icons.chevron_right,
-                                            color: Colors.white38,
-                                            size: 18,
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        details,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: Colors.white60,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        dateStr,
-                                        style: const TextStyle(
-                                          color: Colors.white38,
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ],
+                        return Card(
+                          color: const Color(0xFF1E1E2E),
+                          margin: const EdgeInsets.only(bottom: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () => _showLogDetails(log),
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                border: Border(
+                                  left: BorderSide(
+                                    color: Colors.redAccent,
+                                    width: 4,
                                   ),
                                 ),
                               ),
-                            );
-                          },
-                        ),
-                      ),
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          message,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      const Icon(
+                                        Icons.chevron_right,
+                                        color: Colors.white38,
+                                        size: 18,
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    details,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white60,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    dateStr,
+                                    style: const TextStyle(
+                                      color: Colors.white38,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
           ),
         ],
       ),

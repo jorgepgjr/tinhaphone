@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<project version="4">
-  <component name="ProjectModuleManager">
-    <modules>
-      <module fileurl="file://$PROJECT_DIR$/tinhaphone.iml" filepath="$PROJECT_DIR$/tinhaphone.iml" />
-      <module fileurl="file://$PROJECT_DIR$/android/tinhaphone_android.iml" filepath="$PROJECT_DIR$/android/tinhaphone_android.iml" />
-    </modules>
-  </component>
-</project>

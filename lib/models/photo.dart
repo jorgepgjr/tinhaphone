@@ -6,6 +6,8 @@ class Photo {
   final int timestamp;
   SyncStatus status;
   String? driveFileId;
+  int? prismaPhotoId;
+  String? uploadError;
 
   Photo({
     required this.id,
@@ -13,6 +15,8 @@ class Photo {
     required this.timestamp,
     this.status = SyncStatus.pending,
     this.driveFileId,
+    this.prismaPhotoId,
+    this.uploadError,
   });
 
   Map<String, dynamic> toMap() {
@@ -22,6 +26,8 @@ class Photo {
       'timestamp': timestamp,
       'status': status.name,
       'driveFileId': driveFileId,
+      'prismaPhotoId': prismaPhotoId,
+      'uploadError': uploadError,
     };
   }
 
@@ -35,6 +41,8 @@ class Photo {
         orElse: () => SyncStatus.pending,
       ),
       driveFileId: map['driveFileId'] as String?,
+      prismaPhotoId: map['prismaPhotoId'] as int?,
+      uploadError: map['uploadError'] as String?,
     );
   }
 }

@@ -22,7 +22,7 @@ class DbService {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE photos (
@@ -30,7 +30,9 @@ class DbService {
             localPath TEXT NOT NULL,
             timestamp INTEGER NOT NULL,
             status TEXT NOT NULL,
-            driveFileId TEXT
+            driveFileId TEXT,
+            prismaPhotoId INTEGER,
+            uploadError TEXT
           )
         ''');
         await db.execute('''
@@ -53,6 +55,12 @@ class DbService {
             )
           ''');
         }
+        if (oldVersion < 3) {
+          await db.execute(
+            'ALTER TABLE photos ADD COLUMN prismaPhotoId INTEGER',
+          );
+          await db.execute('ALTER TABLE photos ADD COLUMN uploadError TEXT');
+        }
       },
     );
   }
@@ -72,20 +80,22 @@ class DbService {
       'photos',
       orderBy: 'timestamp DESC',
     );
-    
+
     final appDir = await getApplicationDocumentsDirectory();
-    
+
     return List.generate(maps.length, (i) {
       final photo = Photo.fromMap(maps[i]);
       final filename = photo.localPath.split('/').last;
       final correctPath = '${appDir.path}/$filename';
-      
+
       return Photo(
         id: photo.id,
         localPath: correctPath,
         timestamp: photo.timestamp,
         status: photo.status,
         driveFileId: photo.driveFileId,
+        prismaPhotoId: photo.prismaPhotoId,
+        uploadError: photo.uploadError,
       );
     });
   }
@@ -94,12 +104,16 @@ class DbService {
     String id,
     SyncStatus status, {
     String? driveFileId,
+    int? prismaPhotoId,
+    String? uploadError,
   }) async {
     final db = await database;
-    final updates = {'status': status.name};
+    final Map<String, Object?> updates = {'status': status.name};
     if (driveFileId != null) {
       updates['driveFileId'] = driveFileId;
     }
+    if (prismaPhotoId != null) updates['prismaPhotoId'] = prismaPhotoId;
+    updates['uploadError'] = uploadError;
     await db.update('photos', updates, where: 'id = ?', whereArgs: [id]);
   }
 

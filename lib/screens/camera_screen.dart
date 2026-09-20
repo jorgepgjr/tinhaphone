@@ -123,14 +123,18 @@ class _CameraScreenState extends State<CameraScreen> {
 
       _maxAvailableZoom = await newController.getMaxZoomLevel();
       _minAvailableZoom = await newController.getMinZoomLevel();
-      print('[CAMERA_LOG] Zoom disponível: Min=$_minAvailableZoom, Max=$_maxAvailableZoom');
+      print(
+        '[CAMERA_LOG] Zoom disponível: Min=$_minAvailableZoom, Max=$_maxAvailableZoom',
+      );
 
       _currentZoomLevel = 1.0.clamp(_minAvailableZoom, _maxAvailableZoom);
 
       try {
         await newController.setZoomLevel(_currentZoomLevel);
         await newController.setFlashMode(FlashMode.off);
-        print('[CAMERA_LOG] Zoom inicial definido para $_currentZoomLevel e Flash desligado.');
+        print(
+          '[CAMERA_LOG] Zoom inicial definido para $_currentZoomLevel e Flash desligado.',
+        );
       } catch (e, stackTrace) {
         print('[CAMERA_LOG] Erro ao definir config inicial (zoom/flash): $e');
         print('[CAMERA_LOG] StackTrace: $stackTrace');
@@ -171,7 +175,9 @@ class _CameraScreenState extends State<CameraScreen> {
         _setZoom(mode);
       } else {
         // Switch to the ultra wide camera (usually the last back camera in the list)
-        final ultraWideIndex = _cameras.lastIndexWhere((c) => c.lensDirection == CameraLensDirection.back);
+        final ultraWideIndex = _cameras.lastIndexWhere(
+          (c) => c.lensDirection == CameraLensDirection.back,
+        );
         if (ultraWideIndex != -1 && ultraWideIndex != _selectedCameraIndex) {
           setState(() {
             _isInit = false;
@@ -181,7 +187,9 @@ class _CameraScreenState extends State<CameraScreen> {
         }
       }
     } else if (mode == 1.0) {
-      final firstBackIndex = _cameras.indexWhere((c) => c.lensDirection == CameraLensDirection.back);
+      final firstBackIndex = _cameras.indexWhere(
+        (c) => c.lensDirection == CameraLensDirection.back,
+      );
       if (_selectedCameraIndex != firstBackIndex && firstBackIndex != -1) {
         setState(() {
           _isInit = false;
@@ -241,9 +249,11 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Future<void> _takePicture() async {
     print('[CAMERA_LOG] Botão de tirar foto pressionado.');
-    print('[CAMERA_LOG] Estado: _controller=${_controller != null ? "não-nulo" : "nulo"}, '
-        'isInitialized=${_controller?.value.isInitialized}, '
-        'pendingCount=$_pendingCapturesCount');
+    print(
+      '[CAMERA_LOG] Estado: _controller=${_controller != null ? "não-nulo" : "nulo"}, '
+      'isInitialized=${_controller?.value.isInitialized}, '
+      'pendingCount=$_pendingCapturesCount',
+    );
 
     if (_controller == null || !_controller!.value.isInitialized) {
       print('[CAMERA_LOG] Abortando _takePicture: câmera não inicializada.');
@@ -280,11 +290,15 @@ class _CameraScreenState extends State<CameraScreen> {
 
     while (_pendingCapturesCount > 0) {
       if (_controller == null || !_controller!.value.isInitialized) {
-        print('[CAMERA_LOG] Câmera não inicializada ao processar a fila. Interrompendo.');
+        print(
+          '[CAMERA_LOG] Câmera não inicializada ao processar a fila. Interrompendo.',
+        );
         break;
       }
 
-      print('[CAMERA_LOG] Fila de Captura: Iniciando captura física. Pendentes: $_pendingCapturesCount');
+      print(
+        '[CAMERA_LOG] Fila de Captura: Iniciando captura física. Pendentes: $_pendingCapturesCount',
+      );
       if (mounted) {
         setState(() {
           _isTakingPicture = true;
@@ -293,8 +307,10 @@ class _CameraScreenState extends State<CameraScreen> {
 
       try {
         final XFile photo = await _controller!.takePicture();
-        print('[CAMERA_LOG] Fila de Captura: Sucesso. Temp Path: ${photo.path}');
-        
+        print(
+          '[CAMERA_LOG] Fila de Captura: Sucesso. Temp Path: ${photo.path}',
+        );
+
         // Processa salvamento e marca d'água de forma assíncrona
         _processPhotoInBackground(photo);
       } catch (e, stackTrace) {
@@ -351,7 +367,9 @@ class _CameraScreenState extends State<CameraScreen> {
         });
         print('[CAMERA_LOG] _lastPhoto atualizado no estado da CameraScreen.');
       } else {
-        print('[CAMERA_LOG] CameraScreen não está mais montada (mounted=false).');
+        print(
+          '[CAMERA_LOG] CameraScreen não está mais montada (mounted=false).',
+        );
       }
     } catch (e, stackTrace) {
       print('[CAMERA_LOG] Erro no processamento da foto em background: $e');
@@ -394,9 +412,12 @@ class _CameraScreenState extends State<CameraScreen> {
                 if (zoomLevel != _currentZoomLevel) {
                   setState(() {
                     _currentZoomLevel = zoomLevel;
-                    if (zoomLevel >= 2.0) _activeZoomMode = 2.0;
-                    else if (zoomLevel <= 0.6) _activeZoomMode = 0.5;
-                    else _activeZoomMode = 1.0;
+                    if (zoomLevel >= 2.0)
+                      _activeZoomMode = 2.0;
+                    else if (zoomLevel <= 0.6)
+                      _activeZoomMode = 0.5;
+                    else
+                      _activeZoomMode = 1.0;
                   });
                   await _controller!.setZoomLevel(_currentZoomLevel);
                 }

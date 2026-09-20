@@ -145,11 +145,13 @@ class DriveService {
     }
 
     try {
-      final fileList = await _driveApi!.files.list(
-        q: "mimeType = 'application/vnd.google-apps.folder' and trashed = false",
-        spaces: 'drive',
-        $fields: 'files(id, name)',
-      ).timeout(const Duration(seconds: 15));
+      final fileList = await _driveApi!.files
+          .list(
+            q: "mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+            spaces: 'drive',
+            $fields: 'files(id, name)',
+          )
+          .timeout(const Duration(seconds: 15));
       return fileList.files ?? [];
     } catch (e) {
       debugPrint('Error getting folders: $e');
@@ -164,7 +166,9 @@ class DriveService {
     folder.name = name;
     folder.mimeType = 'application/vnd.google-apps.folder';
 
-    return await _driveApi!.files.create(folder).timeout(const Duration(seconds: 15));
+    return await _driveApi!.files
+        .create(folder)
+        .timeout(const Duration(seconds: 15));
   }
 
   Future<String?> uploadFile(File file, String filename) async {
@@ -185,10 +189,12 @@ class DriveService {
         driveFile.parents = [_targetFolderId!];
       }
 
-      final result = await _driveApi!.files.create(
-        driveFile,
-        uploadMedia: drive.Media(file.openRead(), file.lengthSync()),
-      ).timeout(const Duration(seconds: 30));
+      final result = await _driveApi!.files
+          .create(
+            driveFile,
+            uploadMedia: drive.Media(file.openRead(), file.lengthSync()),
+          )
+          .timeout(const Duration(seconds: 30));
       return result.id;
     } catch (e) {
       debugPrint('Upload error: $e');
