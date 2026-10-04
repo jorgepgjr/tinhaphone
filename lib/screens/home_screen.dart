@@ -1,13 +1,14 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:uuid/uuid.dart';
+import 'package:share_handler/share_handler.dart';
 
 import '../models/photo.dart';
 import '../services/db_service.dart';
 import '../services/prisma_api_service.dart';
+import '../services/local_photo_storage.dart';
 import 'camera_screen.dart';
 import 'photo_viewer_screen.dart';
 import 'settings_screen.dart';
@@ -22,6 +23,10 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _database = DbService();
   final _api = PrismaApiService();
+  final _storage = LocalPhotoStorage();
+  final Set<String> _uploading = {};
+  StreamSubscription<SharedMedia>? _shareSubscription;
+  Future<void> _shareQueue = Future.value();
   List<Photo> _photos = [];
   bool _syncingAll = false;
   bool _configured = false;
@@ -34,20 +39,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _bootstrap() async {
     await _loadPhotos();
+    await _cleanSyncedPhotos();
     final configured = await _api.hasSavedConfig();
     if (!mounted) return;
     setState(() => _configured = configured);
     if (!configured) {
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        if (!mounted) return;
-        final saved = await Navigator.of(context).push<bool>(
-          MaterialPageRoute(
-            builder: (_) => const SettingsScreen(initialSetup: true),
-          ),
-        );
-        if (saved == true && mounted) setState(() => _configured = true);
-      });
+      await _openSettings(initialSetup: true);
     }
+    if (mounted) await _initSharing();
   }
 
   Future<void> _loadPhotos() async {
@@ -55,33 +54,146 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) setState(() => _photos = photos);
   }
 
-  Future<Photo> _handleCapture(XFile capturedFile) async {
-    final appDirectory = await getApplicationDocumentsDirectory();
-    final now = DateTime.now();
-    final id = const Uuid().v4();
-    final path = '${appDirectory.path}/foto_${now.millisecondsSinceEpoch}.jpg';
-    final saved = await File(capturedFile.path).copy(path);
-    final photo = Photo(
-      id: id,
-      localPath: saved.path,
-      timestamp: now.millisecondsSinceEpoch,
-    );
+  Future<Photo> _saveLocalPhoto(File source) async {
+    final photo = await _storage.importPhoto(source);
     await _database.savePhoto(photo);
+    try {
+      await _storage.deleteTemporaryCopy(source);
+    } catch (error) {
+      await _database.saveLog(
+        'Não foi possível limpar o cache da foto',
+        '$error',
+      );
+    }
+    return photo;
+  }
+
+  Future<Photo?> _handleCapture(XFile capturedFile) async {
+    final photo = await _saveLocalPhoto(File(capturedFile.path));
     await _loadPhotos();
     await _upload(photo);
-    return (await _database.getPhotos()).firstWhere((item) => item.id == id);
+    final remaining = await _database.getPhotos();
+    return remaining.where((item) => item.id == photo.id).firstOrNull;
+  }
+
+  Future<void> _initSharing() async {
+    try {
+      final handler = ShareHandler.instance;
+      _shareSubscription = handler.sharedMediaStream.listen(
+        _queueSharedMedia,
+        onError: (Object error) =>
+            _database.saveLog('Falha no compartilhamento', '$error'),
+      );
+      final initial = await handler.getInitialSharedMedia();
+      if (initial != null) {
+        _queueSharedMedia(initial);
+        await handler.resetInitialSharedMedia();
+      }
+    } catch (error) {
+      await _database.saveLog(
+        'Não foi possível iniciar o compartilhamento',
+        '$error',
+      );
+    }
+  }
+
+  void _queueSharedMedia(SharedMedia media) {
+    _shareQueue = _shareQueue.then((_) => _importSharedMedia(media)).catchError((
+      Object error,
+    ) async {
+      await _database.saveLog(
+        'Falha ao importar fotos compartilhadas',
+        '$error',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Não foi possível importar as fotos. Os originais foram preservados.',
+            ),
+          ),
+        );
+      }
+    });
+  }
+
+  Future<void> _importSharedMedia(SharedMedia media) async {
+    final paths = (media.attachments ?? [])
+        .where((item) => item?.type == SharedAttachmentType.image)
+        .map((item) => item!.path)
+        .toSet();
+    final imported = <Photo>[];
+    var failed = 0;
+    // Salva todas as imagens antes de iniciar a rede. Cada falha é independente.
+    for (final path in paths) {
+      try {
+        imported.add(await _saveLocalPhoto(File(path)));
+      } catch (error) {
+        failed++;
+        await _database.saveLog(
+          'Falha ao importar uma foto compartilhada',
+          '$error',
+        );
+      }
+    }
+    await _loadPhotos();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${imported.length} foto(s) recebida(s). ${_configured ? 'Enviando para a turma configurada.' : 'Configure o Prisma e toque em Enviar.'}${failed > 0 ? ' $failed foto(s) não puderam ser importadas.' : ''}',
+          ),
+        ),
+      );
+    }
+    if (_configured) {
+      for (final photo in imported) {
+        await _upload(photo);
+      }
+    }
+  }
+
+  Future<void> _cleanSyncedPhotos() async {
+    try {
+      await _performSyncedCleanup();
+    } catch (error) {
+      await _database.saveLog(
+        'Não foi possível iniciar a limpeza de espaço',
+        '$error',
+      );
+    }
+  }
+
+  Future<void> _performSyncedCleanup() async {
+    if (!(await _api.loadConfig()).autoDeleteSynced) return;
+    for (final photo in await _database.getPhotos()) {
+      try {
+        if (await _storage.deleteSyncedCopy(photo)) {
+          await _database.deletePhoto(photo.id);
+        }
+      } catch (error) {
+        // Uma falha na limpeza nunca transforma um envio confirmado em erro.
+        await _database.saveLog(
+          'Foto enviada, mas não foi possível liberar espaço',
+          '$error',
+        );
+      }
+    }
+    await _loadPhotos();
   }
 
   Future<void> _upload(Photo photo) async {
-    await _database.updatePhotoStatus(photo.id, SyncStatus.syncing);
-    await _loadPhotos();
+    if (!_uploading.add(photo.id)) return;
     try {
+      await _database.updatePhotoStatus(photo.id, SyncStatus.syncing);
+      await _loadPhotos();
       final remoteId = await _api.uploadPhoto(File(photo.localPath));
       await _database.updatePhotoStatus(
         photo.id,
         SyncStatus.synced,
         prismaPhotoId: remoteId,
       );
+      await _cleanSyncedPhotos();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Foto enviada ao Prisma com sucesso.')),
@@ -105,6 +217,7 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
     } finally {
+      _uploading.remove(photo.id);
       await _loadPhotos();
     }
   }
@@ -131,12 +244,25 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openSettings({bool initialSetup = false}) async {
-    final saved = await Navigator.of(context).push<bool>(
+    await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => SettingsScreen(initialSetup: initialSetup),
+        builder: (_) => SettingsScreen(
+          initialSetup: initialSetup,
+          onSaved: _cleanSyncedPhotos,
+        ),
       ),
     );
-    if (saved == true && mounted) setState(() => _configured = true);
+    if (mounted) {
+      final configured = await _api.hasSavedConfig();
+      if (mounted) setState(() => _configured = configured);
+      await _cleanSyncedPhotos();
+    }
+  }
+
+  @override
+  void dispose() {
+    _shareSubscription?.cancel();
+    super.dispose();
   }
 
   void _openPhoto(int index) {

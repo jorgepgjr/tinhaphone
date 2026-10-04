@@ -9,12 +9,14 @@ class PrismaConfig {
   final String email;
   final String password;
   final int classId;
+  final bool autoDeleteSynced;
 
   const PrismaConfig({
     required this.baseUrl,
     required this.email,
     required this.password,
     required this.classId,
+    this.autoDeleteSynced = false,
   });
 }
 
@@ -23,6 +25,7 @@ class PrismaApiService {
   static const _emailKey = 'prisma_email';
   static const _passwordKey = 'prisma_password';
   static const _classIdKey = 'prisma_class_id';
+  static const _autoDeleteKey = 'auto_delete_synced';
 
   String get _defaultBaseUrl =>
       Platform.isAndroid ? 'http://10.0.2.2:8000' : 'http://127.0.0.1:8000';
@@ -43,6 +46,7 @@ class PrismaApiService {
       email: preferences.getString(_emailKey) ?? 'marilia@school.com',
       password: preferences.getString(_passwordKey) ?? 'mypassword',
       classId: preferences.getInt(_classIdKey) ?? 2,
+      autoDeleteSynced: preferences.getBool(_autoDeleteKey) ?? false,
     );
   }
 
@@ -56,6 +60,7 @@ class PrismaApiService {
       preferences.setString(_emailKey, config.email.trim()),
       preferences.setString(_passwordKey, config.password),
       preferences.setInt(_classIdKey, config.classId),
+      preferences.setBool(_autoDeleteKey, config.autoDeleteSynced),
     ]);
   }
 
