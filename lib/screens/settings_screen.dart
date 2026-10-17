@@ -5,8 +5,9 @@ import 'error_logs_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final bool initialSetup;
+  final Future<void> Function()? onSaved;
 
-  const SettingsScreen({super.key, this.initialSetup = false});
+  const SettingsScreen({super.key, this.initialSetup = false, this.onSaved});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -20,6 +21,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _classId = TextEditingController();
   bool _loading = true;
   bool _testing = false;
+  bool _autoDeleteSynced = false;
 
   @override
   void initState() {
@@ -33,6 +35,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _email.text = config.email;
     _password.text = config.password;
     _classId.text = config.classId.toString();
+    _autoDeleteSynced = config.autoDeleteSynced;
     if (mounted) setState(() => _loading = false);
   }
 
@@ -41,10 +44,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     email: _email.text.trim(),
     password: _password.text,
     classId: int.tryParse(_classId.text) ?? 2,
+    autoDeleteSynced: _autoDeleteSynced,
   );
 
   Future<void> _save() async {
     await _api.saveConfig(_config());
+    await widget.onSaved?.call();
     if (mounted && widget.initialSetup) {
       Navigator.of(context).pop(true);
     } else if (mounted)
@@ -141,6 +146,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.groups_outlined),
                   ),
+                ),
+                const SizedBox(height: 16),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(
+                    'Apagar automaticamente fotos sincronizadas',
+                  ),
+                  subtitle: const Text(
+                    'Libera o espaço das cópias do Tinhaphone somente após o Prisma confirmar o envio. Fotos pendentes e originais da galeria não são apagados. Ao salvar, também limpa as cópias já enviadas.',
+                  ),
+                  value: _autoDeleteSynced,
+                  onChanged: (value) =>
+                      setState(() => _autoDeleteSynced = value ?? false),
                 ),
                 const SizedBox(height: 16),
                 FilledButton.icon(

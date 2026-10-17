@@ -9,7 +9,10 @@
 		<key>NSExtensionAttributes</key>
 		<dict>
 			<key>NSExtensionActivationRule</key>
-			<string>TRUEPREDICATE</string>
+			<dict>
+				<key>NSExtensionActivationSupportsImageWithMaxCount</key>
+				<integer>100</integer>
+			</dict>
 		</dict>
 		<key>NSExtensionPrincipalClass</key>
 		<string>$(PRODUCT_MODULE_NAME).ShareViewController</string>

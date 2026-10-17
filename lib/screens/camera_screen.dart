@@ -40,7 +40,7 @@ Future<String> _applyWatermarkToImage(Map<String, dynamic> params) async {
 }
 
 class CameraScreen extends StatefulWidget {
-  final Future<Photo> Function(XFile) onCapture;
+  final Future<Photo?> Function(XFile) onCapture;
 
   const CameraScreen({super.key, required this.onCapture});
 
@@ -359,7 +359,9 @@ class _CameraScreenState extends State<CameraScreen> {
 
       print('[CAMERA_LOG] Chamando widget.onCapture...');
       final photoObj = await widget.onCapture(photo);
-      print('[CAMERA_LOG] widget.onCapture retornado com id: ${photoObj.id}');
+      print(
+        '[CAMERA_LOG] widget.onCapture concluído. Cópia local: ${photoObj?.id}',
+      );
 
       if (mounted) {
         setState(() {
