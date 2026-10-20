@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tinhaphone/screens/settings_screen.dart';
 import 'package:tinhaphone/services/prisma_api_service.dart';
+import 'package:tinhaphone/services/db_service.dart';
+import 'support/session_fixtures.dart';
 
 void main() {
   testWidgets(
@@ -13,6 +15,8 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: SettingsScreen(
+            api: PrismaApiService(teacherSession),
+            database: DbService(teacherSession.scope),
             onSaved: () async {
               cleanupRequests++;
             },
@@ -30,7 +34,10 @@ void main() {
       await tester.ensureVisible(save);
       await tester.tap(save);
       await tester.pumpAndSettle();
-      expect((await PrismaApiService().loadConfig()).autoDeleteSynced, isTrue);
+      expect(
+        (await PrismaApiService(teacherSession).loadConfig()).autoDeleteSynced,
+        isTrue,
+      );
       expect(cleanupRequests, 1);
       expect(find.text('Configurações salvas.'), findsOneWidget);
     },

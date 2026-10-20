@@ -1,10 +1,11 @@
-import 'dart:io';
 import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/foundation.dart';
 
 class GoogleAuthClient extends http.BaseClient {
   final Map<String, String> _headers;
@@ -13,206 +14,227 @@ class GoogleAuthClient extends http.BaseClient {
   GoogleAuthClient(this._headers);
 
   @override
-  Future<http.StreamedResponse> send(http.BaseRequest request) {
-    return _client.send(request..headers.addAll(_headers));
-  }
+  Future<http.StreamedResponse> send(http.BaseRequest request) =>
+      _client.send(request..headers.addAll(_headers));
+
+  @override
+  void close() => _client.close();
 }
 
+/// Drive preferences and the saved Google account are kept separate per app account.
 class DriveService {
-  static final DriveService _instance = DriveService._internal();
-  factory DriveService() => _instance;
-  DriveService._internal();
+  DriveService(this.accountScope) {
+    if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(accountScope)) {
+      throw ArgumentError('Conta inválida');
+    }
+  }
 
+  final String accountScope;
   GoogleSignInAccount? _currentUser;
   drive.DriveApi? _driveApi;
+  GoogleAuthClient? _authClient;
   bool _initialized = false;
+  Future<void>? _initializing;
   String? _targetFolderId;
   String? _targetFolderName;
+  String? _savedGoogleEmail;
+  bool _autoDeleteAfterUpload = false;
 
-  final List<String> _scopes = [drive.DriveApi.driveFileScope];
+  static const _scopes = [drive.DriveApi.driveFileScope];
 
-  // IMPORTANTE PARA ANDROID:
-  // Crie uma credencial do tipo "Web Application" (Aplicativo da Web) no Google Cloud Console
-  // e cole o Client ID gerado aqui. O Android precisa dele para acessar o Drive API.
-  static const String _serverClientId =
+  // This is the existing web OAuth client ID used by the original Drive integration.
+  static const _serverClientId =
       '498748867390-o4cs1mahtk733jjtn24o3n2ai4uinokg.apps.googleusercontent.com';
+
+  String get _folderIdKey => 'drive_target_folder_id_$accountScope';
+  String get _folderNameKey => 'drive_target_folder_name_$accountScope';
+  String get _accountKey => 'drive_account_email_$accountScope';
+  String get _cleanupKey => 'drive_auto_delete_$accountScope';
 
   Future<void> _initIfNeeded() async {
     if (_initialized) return;
+    if (_initializing != null) return _initializing;
+    final task = _initialize();
+    _initializing = task;
+    try {
+      await task;
+    } finally {
+      if (identical(_initializing, task)) _initializing = null;
+    }
+  }
 
+  Future<void> _initialize() async {
     await GoogleSignIn.instance.initialize(
       serverClientId: Platform.isAndroid ? _serverClientId : null,
     );
-
     final prefs = await SharedPreferences.getInstance();
-    _targetFolderId = prefs.getString('drive_target_folder_id');
-    _targetFolderName = prefs.getString('drive_target_folder_name');
-
+    _targetFolderId = prefs.getString(_folderIdKey);
+    _targetFolderName = prefs.getString(_folderNameKey);
+    _savedGoogleEmail = prefs.getString(_accountKey);
+    _autoDeleteAfterUpload = prefs.getBool(_cleanupKey) ?? false;
     _initialized = true;
   }
 
   Future<bool> get isSignedIn async {
-    return _currentUser != null;
+    await _initIfNeeded();
+    return _currentUser != null && _driveApi != null;
   }
 
+  String? get currentUserEmail => _currentUser?.email;
   String? get targetFolderId => _targetFolderId;
   String? get targetFolderName => _targetFolderName;
+  bool get autoDeleteAfterUpload => _autoDeleteAfterUpload;
 
-  Future<void> setTargetFolder(String folderId, String folderName) async {
-    _targetFolderId = folderId;
-    _targetFolderName = folderName;
+  Future<void> setAutoDeleteAfterUpload(bool value) async {
+    await _initIfNeeded();
+    _autoDeleteAfterUpload = value;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('drive_target_folder_id', folderId);
-    await prefs.setString('drive_target_folder_name', folderName);
+    await prefs.setBool(_cleanupKey, value);
+  }
+
+  Future<void> setTargetFolder(String? folderId, String? folderName) async {
+    await _initIfNeeded();
+    _targetFolderId = folderId;
+    _targetFolderName = folderId == null ? null : folderName;
+    final prefs = await SharedPreferences.getInstance();
+    if (folderId == null) {
+      await prefs.remove(_folderIdKey);
+      await prefs.remove(_folderNameKey);
+    } else {
+      await prefs.setString(_folderIdKey, folderId);
+      await prefs.setString(_folderNameKey, folderName ?? 'Pasta');
+    }
   }
 
   Future<void> signIn() async {
     await _initIfNeeded();
     try {
-      _currentUser = await GoogleSignIn.instance.authenticate(
+      final account = await GoogleSignIn.instance.authenticate(
         scopeHint: _scopes,
       );
-      if (_currentUser != null) {
-        await _initDriveApi();
-      }
+      await _useAccount(account);
     } catch (error) {
-      debugPrint('Error signing in: $error');
+      debugPrint('Google Drive connection failed: $error');
       rethrow;
     }
   }
 
   Future<void> signInSilently() async {
     await _initIfNeeded();
-
-    // Se já estiver logado na sessão atual, não tenta logar de novo
-    if (_currentUser != null) return;
-
+    if (_currentUser != null && _driveApi != null) return;
+    // Never inherit another teacher's Google identity when this app account has
+    // not connected Drive or has a different saved Google account.
+    if (_savedGoogleEmail == null) return;
     try {
-      _currentUser = await GoogleSignIn.instance
+      final account = await GoogleSignIn.instance
           .attemptLightweightAuthentication();
-      if (_currentUser != null) {
-        await _initDriveApi();
+      if (account != null && account.email == _savedGoogleEmail) {
+        await _useAccount(account, persistEmail: false);
       }
     } catch (error) {
-      debugPrint('Error signing in silently: $error');
+      debugPrint('Google Drive silent connection failed: $error');
+    }
+  }
+
+  Future<void> _useAccount(
+    GoogleSignInAccount account, {
+    bool persistEmail = true,
+  }) async {
+    _currentUser = account;
+    await _initDriveApi();
+    if (_driveApi == null) {
+      _currentUser = null;
+      throw Exception('Não foi possível autorizar o acesso ao Google Drive.');
+    }
+    if (persistEmail) {
+      _savedGoogleEmail = account.email;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_accountKey, account.email);
     }
   }
 
   Future<void> _initDriveApi() async {
-    if (_currentUser == null) {
-      debugPrint('DriveService: _currentUser is null in _initDriveApi');
-      return;
+    final account = _currentUser;
+    if (account == null) return;
+    Map<String, String>? headers = await account.authorizationClient
+        .authorizationHeaders(_scopes);
+    if (headers == null) {
+      await account.authorizationClient.authorizeScopes(_scopes);
+      headers = await account.authorizationClient.authorizationHeaders(_scopes);
     }
-
-    try {
-      // Primeiro tentamos pegar os headers direto se a pessoa já deu a permissão antes
-      Map<String, String>? headers = await _currentUser!.authorizationClient
-          .authorizationHeaders(_scopes);
-
-      // Se não conseguimos, pedimos a permissão de forma interativa
-      if (headers == null) {
-        debugPrint('DriveService: headers are null, requesting scopes...');
-        await _currentUser!.authorizationClient.authorizeScopes(_scopes);
-        headers = await _currentUser!.authorizationClient.authorizationHeaders(
-          _scopes,
-        );
-        if (headers == null) {
-          debugPrint('DriveService: user denied scopes');
-        }
-      }
-
-      if (headers == null) {
-        debugPrint('DriveService: still no headers after trying to authorize');
-        return;
-      }
-
-      final client = GoogleAuthClient(headers);
-      _driveApi = drive.DriveApi(client);
-      debugPrint('DriveService: _driveApi initialized successfully!');
-    } catch (e) {
-      debugPrint('DriveService: error initializing drive api: $e');
-    }
+    if (headers == null) return;
+    _authClient?.close();
+    final client = GoogleAuthClient(headers);
+    _authClient = client;
+    _driveApi = drive.DriveApi(client);
   }
 
   Future<List<drive.File>> getFolders() async {
-    if (_driveApi == null) {
-      await _initDriveApi();
-      if (_driveApi == null) {
-        throw Exception(
-          'Not signed in to Google Drive or missing authorization',
-        );
-      }
-    }
-
-    try {
-      final fileList = await _driveApi!.files
-          .list(
-            q: "mimeType = 'application/vnd.google-apps.folder' and trashed = false",
-            spaces: 'drive',
-            $fields: 'files(id, name)',
-          )
-          .timeout(const Duration(seconds: 15));
-      return fileList.files ?? [];
-    } catch (e) {
-      debugPrint('Error getting folders: $e');
-      rethrow;
-    }
+    final api = await _requireDriveApi();
+    final folders = await api.files
+        .list(
+          q: "mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+          spaces: 'drive',
+          $fields: 'files(id, name)',
+          orderBy: 'name',
+          pageSize: 1000,
+        )
+        .timeout(const Duration(seconds: 15));
+    return folders.files ?? [];
   }
 
   Future<drive.File> createFolder(String name) async {
-    if (_driveApi == null) throw Exception('Drive API not initialized');
-
-    var folder = drive.File();
-    folder.name = name;
-    folder.mimeType = 'application/vnd.google-apps.folder';
-
-    return await _driveApi!.files
-        .create(folder)
-        .timeout(const Duration(seconds: 15));
+    final api = await _requireDriveApi();
+    final folder = drive.File()
+      ..name = name.trim()
+      ..mimeType = 'application/vnd.google-apps.folder';
+    return api.files.create(folder).timeout(const Duration(seconds: 15));
   }
 
-  Future<String?> uploadFile(File file, String filename) async {
-    if (_driveApi == null) {
-      await _initDriveApi();
-      if (_driveApi == null) {
-        throw Exception(
-          'Not signed in to Google Drive or missing authorization',
-        );
-      }
+  Future<String> uploadFile(File file, String filename) async {
+    final api = await _requireDriveApi();
+    if (!await file.exists())
+      throw Exception('O arquivo desta foto não está disponível.');
+    final driveFile = drive.File()
+      ..name = filename
+      ..parents = _targetFolderId == null ? null : [_targetFolderId!];
+    final result = await api.files
+        .create(
+          driveFile,
+          uploadMedia: drive.Media(file.openRead(), await file.length()),
+        )
+        .timeout(const Duration(seconds: 60));
+    final id = result.id;
+    if (id == null) throw Exception('O Google Drive não confirmou o arquivo.');
+    return id;
+  }
+
+  Future<drive.DriveApi> _requireDriveApi() async {
+    await _initIfNeeded();
+    if (_driveApi == null) await signInSilently();
+    final api = _driveApi;
+    if (api == null) {
+      throw Exception('Conecte sua conta do Google Drive para enviar fotos.');
     }
-
-    try {
-      var driveFile = drive.File();
-      driveFile.name = filename;
-
-      if (_targetFolderId != null) {
-        driveFile.parents = [_targetFolderId!];
-      }
-
-      final result = await _driveApi!.files
-          .create(
-            driveFile,
-            uploadMedia: drive.Media(file.openRead(), file.lengthSync()),
-          )
-          .timeout(const Duration(seconds: 30));
-      return result.id;
-    } catch (e) {
-      debugPrint('Upload error: $e');
-      rethrow;
-    }
+    return api;
   }
 
   Future<void> signOut() async {
     await _initIfNeeded();
-    await GoogleSignIn.instance.signOut();
-    _currentUser = null;
-    _driveApi = null;
-
-    // Do we clear the target folder on sign out? Probably yes for safety.
-    _targetFolderId = null;
-    _targetFolderName = null;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('drive_target_folder_id');
-    await prefs.remove('drive_target_folder_name');
+    try {
+      await GoogleSignIn.instance.signOut();
+    } finally {
+      _authClient?.close();
+      _authClient = null;
+      _currentUser = null;
+      _driveApi = null;
+      _savedGoogleEmail = null;
+      _targetFolderId = null;
+      _targetFolderName = null;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_accountKey);
+      await prefs.remove(_folderIdKey);
+      await prefs.remove(_folderNameKey);
+    }
   }
 }

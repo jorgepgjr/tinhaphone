@@ -1,4 +1,56 @@
-# Tinhaphone - Flutter iOS App
+# TinhaKids unificado — professor e família
+
+Este repositório é a base do aplicativo único **TinhaKids**. O nome técnico do pacote Dart e o identificador normal Android/iOS continuam os do TinhaPhone para preservar suas integrações nativas. O projeto antigo `tinhakids` fica como referência, sem necessidade de manter dois apps.
+
+## Uso atual
+
+- Login único por e-mail/senha, com perfil definido pelo Prisma.
+- Professor: câmera, turma selecionada pelo nome, fila por conta, compartilhamento, envio ao Prisma e cópia opcional no Google Drive.
+- Familiar: publicações, portfólios e somente os alunos vinculados no Prisma.
+- Coordenação e Marketing continuam no portal. E-mails não podem ser compartilhados entre perfis.
+- A sessão usa armazenamento seguro; a senha não é persistida. Fotos e configurações antigas não são importadas, nem apagadas pelo código novo.
+
+Com a API do Prisma atualizada e em execução:
+
+```powershell
+flutter pub get
+flutter run -d ID-DO-DISPOSITIVO
+```
+
+No emulador Android a API é `http://10.0.2.2:8000`. Para celular físico, acrescente `--dart-define=API_URL=http://IP-DO-COMPUTADOR:8000`. Também é possível informar o endereço em **Servidor de testes** no login. Em produção, configure um servidor HTTPS.
+
+```powershell
+flutter analyze --no-fatal-infos
+flutter test
+flutter build apk --debug
+flutter test integration_test/unified_app_test.dart -d ID-DO-EMULADOR --no-uninstall
+```
+
+No Windows, `android/gradlew.bat` configura automaticamente um diretório de sockets Java em `%USERPROFILE%\.gradle\socket-tmp`. Isso evita o erro `Unable to establish loopback connection` quando o Windows fornece um caminho temporário abreviado, como `GUILHE~1`. A configuração vale apenas durante a compilação e seus subprocessos; não exige alterar o Java ou as variáveis globais do computador. Esse wrapper é versionado para preservar a correção.
+
+O teste integrado requer a API e contas de desenvolvimento existentes, cria duas fotos e usa o pacote Android separado `com.example.tinhaphone.integration`. Não execute seed sobre uma base que precise preservar. O compartilhamento é simulado no limite do plugin nesse teste; valide também o menu nativo manualmente.
+
+**Atualizações com dados:** não desinstale o app nem use `flutter install`, que pode remover a versão anterior. Para um APK compilado, utilize `adb install -r caminho-do-apk`. Interrompa se houver erro de assinatura e faça backup antes de qualquer desinstalação.
+
+As configurações de iPhone foram mantidas/preparadas, mas compilação, assinatura, Keychain e compartilhamento precisam de validação em um Mac com Xcode. O guia completo está em `../prisma/GUIA_DE_TESTES_E_FLUXOS.md`.
+
+## Cópia das fotos no Google Drive (professor)
+
+### Galeria do professor
+
+Na área do professor, escolha a turma no cartão superior e use o botão **+** para fotografar ou importar várias imagens da galeria. O envio ao Prisma começa após a importação; falhas permanecem na fila e podem ser reenviadas. A grade mostra fotos locais e registros enviados da turma, agrupados por data. Pressione e segure uma miniatura para selecionar várias fotos e então mover, adicionar/remover tags ou excluir. Os filtros de data, status e tags ficam no ícone ao lado de **Fotos**. Fotos publicadas ou usadas em portfólios não podem ser movidas nem excluídas do servidor.
+
+As tags são opcionais e pertencem à escola. Fotos pendentes guardam suas tags no banco local da conta e as enviam depois da confirmação do upload. A visualização remota usa URLs assinadas e miniaturas reduzidas; ao expirar a URL, atualize a galeria.
+
+O envio ao Google Drive voltou como destino opcional, separado do envio obrigatório ao Prisma. O professor conecta sua própria conta Google nas configurações, escolhe uma pasta (ou mantém “Meu Drive”) e pode salvar uma foto pelo ícone do Drive no visualizador ou usar **Configurações > Salvar pendentes no Drive**. A opção **Sair** também fica em Configurações; o cabeçalho do professor mantém apenas a engrenagem. As fotos já enviadas ao Drive ficam marcadas e não são reenviadas. A família não vê nem usa essa integração.
+
+Em **Configurações > Google Drive**, o professor também pode ativar a remoção automática da cópia privada do app. Por segurança, essa cópia só é removida depois que o arquivo estiver confirmado tanto no Drive quanto no Prisma; o original da galeria do celular nunca é apagado. A preferência e a pasta ficam separadas para cada conta do TinhaKids.
+
+### Configuração do Google Cloud
+
+O projeto precisa ter a Google Drive API habilitada e a tela de consentimento OAuth configurada. Se o app estiver em modo de teste, adicione os e-mails autorizados como usuários de teste. Para distribuição, configure os clientes OAuth nativos correspondentes aos identificadores Android e iOS deste app. As credenciais Android e o esquema iOS existentes foram preservados; não coloque credenciais privadas em documentação ou no repositório.
+
+As seções históricas abaixo descrevem como a integração era preparada originalmente e podem ser usadas como referência para configurar o projeto Google Cloud.
 
 Este é um aplicativo de Cofre de Fotos (Photo Vault) construído em Flutter, projetado exclusivamente para rodar no formato "Retrato" (Portrait) no iOS. Ele permite capturar fotos e sincronizá-las diretamente com o seu Google Drive.
 

@@ -2,7 +2,7 @@ gradle-wrapper.jar
 /.gradle
 /captures/
 /gradlew
-/gradlew.bat
+# O wrapper Windows contém a correção dos sockets locais do Java e é versionado.
 /local.properties
 GeneratedPluginRegistrant.java
 .cxx/

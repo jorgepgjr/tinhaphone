@@ -1,113 +1,146 @@
-import 'dart:convert';
 import 'dart:io';
-
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+import '../auth/mobile_session.dart';
+import '../models/photo.dart';
 
 class PrismaConfig {
-  final String baseUrl;
-  final String email;
-  final String password;
-  final int classId;
+  final int? classId;
   final bool autoDeleteSynced;
-
-  const PrismaConfig({
-    required this.baseUrl,
-    required this.email,
-    required this.password,
-    required this.classId,
-    this.autoDeleteSynced = false,
-  });
+  const PrismaConfig({this.classId, this.autoDeleteSynced = false});
 }
 
 class PrismaApiService {
-  static const _baseUrlKey = 'prisma_base_url';
-  static const _emailKey = 'prisma_email';
-  static const _passwordKey = 'prisma_password';
-  static const _classIdKey = 'prisma_class_id';
-  static const _autoDeleteKey = 'auto_delete_synced';
-
-  String get _defaultBaseUrl =>
-      Platform.isAndroid ? 'http://10.0.2.2:8000' : 'http://127.0.0.1:8000';
-
-  Future<bool> hasSavedConfig() async {
-    final preferences = await SharedPreferences.getInstance();
-    return preferences.containsKey(_baseUrlKey) &&
-        preferences.containsKey(_emailKey) &&
-        preferences.containsKey(_passwordKey) &&
-        preferences.containsKey(_classIdKey);
-  }
-
+  final MobileSession session;
+  final Future<void> Function()? onUnauthorized;
+  final http.Client client;
+  PrismaApiService(this.session, {this.onUnauthorized, http.Client? client})
+    : client = client ?? http.Client();
+  String get _prefix => 'unified_teacher_${session.scope}_';
   Future<PrismaConfig> loadConfig() async {
-    final preferences = await SharedPreferences.getInstance();
+    final p = await SharedPreferences.getInstance();
     return PrismaConfig(
-      baseUrl: (preferences.getString(_baseUrlKey) ?? _defaultBaseUrl)
-          .replaceAll(RegExp(r'/$'), ''),
-      email: preferences.getString(_emailKey) ?? 'marilia@school.com',
-      password: preferences.getString(_passwordKey) ?? 'mypassword',
-      classId: preferences.getInt(_classIdKey) ?? 2,
-      autoDeleteSynced: preferences.getBool(_autoDeleteKey) ?? false,
+      classId: p.getInt('${_prefix}class'),
+      autoDeleteSynced: p.getBool('${_prefix}cleanup') ?? false,
     );
   }
 
   Future<void> saveConfig(PrismaConfig config) async {
-    final preferences = await SharedPreferences.getInstance();
-    await Future.wait([
-      preferences.setString(
-        _baseUrlKey,
-        config.baseUrl.replaceAll(RegExp(r'/$'), ''),
-      ),
-      preferences.setString(_emailKey, config.email.trim()),
-      preferences.setString(_passwordKey, config.password),
-      preferences.setInt(_classIdKey, config.classId),
-      preferences.setBool(_autoDeleteKey, config.autoDeleteSynced),
-    ]);
+    final p = await SharedPreferences.getInstance();
+    if (config.classId == null) {
+      await p.remove('${_prefix}class');
+    } else {
+      await p.setInt('${_prefix}class', config.classId!);
+    }
+    await p.setBool('${_prefix}cleanup', config.autoDeleteSynced);
   }
 
-  Future<String> _login(PrismaConfig config) async {
-    final response = await http
-        .post(
-          Uri.parse('${config.baseUrl}/api/auth/login'),
-          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-          body: {'username': config.email, 'password': config.password},
-        )
-        .timeout(const Duration(seconds: 15));
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    if (response.statusCode != 200)
-      throw Exception(data['detail'] ?? 'Falha na autenticação com o Prisma.');
-    return data['access_token'] as String;
+  Future<void> _check(http.Response response) async {
+    if ([401, 403].contains(response.statusCode)) await onUnauthorized?.call();
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      readResponse(response);
+    }
   }
 
-  Future<List<Map<String, dynamic>>> testConnection(PrismaConfig config) async {
-    final token = await _login(config);
-    final response = await http
+  Future<List<Map<String, dynamic>>> getClasses() async {
+    if (!session.account.isTeacher) {
+      throw StateError('Acesso exclusivo do professor.');
+    }
+    final response = await client
         .get(
-          Uri.parse('${config.baseUrl}/api/classes/'),
-          headers: {'Authorization': 'Bearer $token'},
+          Uri.parse('${session.baseUrl}/api/classes/'),
+          headers: {'Authorization': 'Bearer ${session.token}'},
         )
         .timeout(const Duration(seconds: 15));
-    if (response.statusCode != 200)
-      throw Exception('A conta não tem acesso às turmas.');
+    await _check(response);
     return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
   }
 
-  Future<int> uploadPhoto(File file) async {
-    final config = await loadConfig();
-    final token = await _login(config);
+  bool owns(Photo photo) =>
+      session.account.isTeacher &&
+      photo.accountScope == session.scope &&
+      photo.ownerId == session.account.id &&
+      photo.schoolId == session.account.schoolId &&
+      photo.server == session.baseUrl &&
+      photo.classId != null;
+  Future<int> uploadPhoto(Photo photo) async {
+    if (!owns(photo)) throw StateError('Esta foto pertence a outra conta.');
+    // Nunca usa a turma atualmente selecionada para alterar uma foto pendente.
     final request =
         http.MultipartRequest(
             'POST',
-            Uri.parse('${config.baseUrl}/api/photos/upload'),
+            Uri.parse('${session.baseUrl}/api/photos/upload'),
           )
-          ..headers['Authorization'] = 'Bearer $token'
-          ..fields['class_id'] = config.classId.toString()
-          ..fields['title'] = 'Foto enviada pelo Tinhaphone'
-          ..files.add(await http.MultipartFile.fromPath('file', file.path));
-    final streamed = await request.send().timeout(const Duration(seconds: 45));
-    final response = await http.Response.fromStream(streamed);
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    if (response.statusCode != 201)
-      throw Exception(data['detail'] ?? 'Falha ao enviar a foto.');
-    return data['id'] as int;
+          ..headers['Authorization'] = 'Bearer ${session.token}'
+          ..fields['class_id'] = photo.classId.toString()
+          ..fields['client_upload_id'] = photo.id
+          ..fields['title'] = 'Foto enviada pelo TinhaKids'
+          ..files.add(
+            await http.MultipartFile.fromPath(
+              'file',
+              File(photo.localPath).path,
+            ),
+          );
+    final response = await http.Response.fromStream(
+      await client.send(request).timeout(const Duration(seconds: 45)),
+    ).timeout(const Duration(seconds: 45));
+    await _check(response);
+    return readResponse(response)['id'] as int;
+  }
+
+  Future<dynamic> _jsonRequest(
+    String method,
+    String path, [
+    Object? body,
+  ]) async {
+    final uri = Uri.parse('${session.baseUrl}$path');
+    final headers = {
+      'Authorization': 'Bearer ${session.token}',
+      'Content-Type': 'application/json',
+    };
+    final encoded = body == null ? null : jsonEncode(body);
+    final response = await switch (method) {
+      'POST' => client.post(uri, headers: headers, body: encoded),
+      'PUT' => client.put(uri, headers: headers, body: encoded),
+      'DELETE' => client.delete(uri, headers: headers),
+      _ => client.get(uri, headers: headers),
+    }.timeout(const Duration(seconds: 20));
+    await _check(response);
+    return response.body.isEmpty ? null : jsonDecode(response.body);
+  }
+
+  Future<List<Map<String, dynamic>>> getTags() async =>
+      (await _jsonRequest('GET', '/api/tags/') as List)
+          .cast<Map<String, dynamic>>();
+
+  Future<List<Map<String, dynamic>>> getClassPhotos(int classId) async =>
+      (await _jsonRequest('GET', '/api/photos/class/$classId') as List)
+          .cast<Map<String, dynamic>>();
+
+  Future<Map<String, dynamic>> createTag(String name) async =>
+      (await _jsonRequest('POST', '/api/tags/', {'name': name}))
+          as Map<String, dynamic>;
+
+  Future<void> updateTags(
+    List<int> photoIds,
+    List<int> tagIds, {
+    bool remove = false,
+  }) async {
+    await _jsonRequest('POST', '/api/photos/tags/batch', {
+      'photo_ids': photoIds,
+      'tag_ids': tagIds,
+      'remove': remove,
+    });
+  }
+
+  Future<void> movePhoto(int photoId, int classId) async {
+    await _jsonRequest('PUT', '/api/photos/$photoId/class', {
+      'class_id': classId,
+    });
+  }
+
+  Future<void> deleteRemotePhoto(int photoId) async {
+    await _jsonRequest('DELETE', '/api/photos/$photoId');
   }
 }

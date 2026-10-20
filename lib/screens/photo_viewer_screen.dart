@@ -6,11 +6,13 @@ import '../services/db_service.dart';
 class PhotoViewerScreen extends StatefulWidget {
   final List<Photo> photos;
   final int initialIndex;
+  final DbService database;
 
   const PhotoViewerScreen({
     Key? key,
     required this.photos,
     required this.initialIndex,
+    required this.database,
   }) : super(key: key);
 
   @override
@@ -20,7 +22,7 @@ class PhotoViewerScreen extends StatefulWidget {
 class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
   late PageController _pageController;
   late List<Photo> _photos;
-  final DbService _dbService = DbService();
+  DbService get _dbService => widget.database;
   final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
       GlobalKey<ScaffoldMessengerState>();
 
@@ -48,6 +50,8 @@ class _PhotoViewerScreenState extends State<PhotoViewerScreen> {
     });
 
     await _dbService.deletePhoto(photo.id);
+
+    if (!mounted) return;
 
     final scaffoldMessenger = _scaffoldMessengerKey.currentState!;
     scaffoldMessenger.clearSnackBars();

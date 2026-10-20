@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/photo.dart';
+import '../auth/mobile_session.dart';
 
 /// Apenas arquivos privados do app são elegíveis para limpeza automática.
 class LocalPhotoStorage {
@@ -16,7 +17,20 @@ class LocalPhotoStorage {
     this.temporaryDirectory = getTemporaryDirectory,
   });
 
-  Future<Photo> importPhoto(File source) async {
+  factory LocalPhotoStorage.forAccount(String scope) => LocalPhotoStorage(
+    documentsDirectory: () async {
+      final root = await getApplicationDocumentsDirectory();
+      return Directory(
+        p.join(root.path, 'tinhakids_v1', scope),
+      ).create(recursive: true);
+    },
+  );
+
+  Future<Photo> importPhoto(
+    File source, {
+    MobileSession? session,
+    int? classId,
+  }) async {
     final directory = await documentsDirectory();
     final id = const Uuid().v4();
     final extension = p.extension(source.path);
@@ -27,6 +41,11 @@ class LocalPhotoStorage {
       id: id,
       localPath: saved.path,
       timestamp: DateTime.now().millisecondsSinceEpoch,
+      accountScope: session?.scope,
+      ownerId: session?.account.id,
+      server: session?.baseUrl,
+      schoolId: session?.account.schoolId,
+      classId: classId,
     );
   }
 
@@ -43,6 +62,21 @@ class LocalPhotoStorage {
       if (!p.isWithin(await directory.resolveSymbolicLinks(), resolved)) {
         return false;
       }
+      await file.delete();
+    }
+    return true;
+  }
+
+  Future<bool> deleteManagedCopy(Photo photo) async {
+    final directory = await documentsDirectory();
+    final file = File(photo.localPath);
+    if (!p.isWithin(directory.absolute.path, file.absolute.path)) return false;
+    if (await file.exists()) {
+      if (!p.isWithin(
+        await directory.resolveSymbolicLinks(),
+        await file.resolveSymbolicLinks(),
+      ))
+        return false;
       await file.delete();
     }
     return true;

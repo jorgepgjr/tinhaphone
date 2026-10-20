@@ -1,105 +1,87 @@
+import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import 'package:path_provider/path_provider.dart';
 import '../models/photo.dart';
 
+/// Banco novo por conta. photo_vault.db do aplicativo antigo não é aberto.
 class DbService {
-  static final DbService _instance = DbService._internal();
-  factory DbService() => _instance;
-  DbService._internal();
-
+  final String scope;
+  final DatabaseFactory? factory;
   Database? _database;
-
-  Future<Database> get database async {
-    if (_database != null) return _database!;
-    _database = await _initDb();
-    return _database!;
+  Future<Database>? _opening;
+  DbService(this.scope, {this.factory}) {
+    if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(scope)) {
+      throw ArgumentError('Conta inválida');
+    }
   }
-
-  Future<Database> _initDb() async {
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, 'photo_vault.db');
-
-    return await openDatabase(
+  Future<Database> get database async =>
+      _database ??= await (_opening ??= _open());
+  Future<Database> _open() async {
+    final selected = factory ?? databaseFactory;
+    final path = join(
+      await selected.getDatabasesPath(),
+      'tinhakids_v1_$scope.db',
+    );
+    return selected.openDatabase(
       path,
-      version: 3,
-      onCreate: (db, version) async {
-        await db.execute('''
-          CREATE TABLE photos (
-            id TEXT PRIMARY KEY,
-            localPath TEXT NOT NULL,
-            timestamp INTEGER NOT NULL,
-            status TEXT NOT NULL,
-            driveFileId TEXT,
-            prismaPhotoId INTEGER,
-            uploadError TEXT
-          )
-        ''');
-        await db.execute('''
-          CREATE TABLE logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp INTEGER NOT NULL,
-            message TEXT NOT NULL,
-            details TEXT
-          )
-        ''');
-      },
-      onUpgrade: (db, oldVersion, newVersion) async {
-        if (oldVersion < 2) {
-          await db.execute('''
-            CREATE TABLE logs (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              timestamp INTEGER NOT NULL,
-              message TEXT NOT NULL,
-              details TEXT
-            )
-          ''');
-        }
-        if (oldVersion < 3) {
+      options: OpenDatabaseOptions(
+        version: 4,
+        onCreate: (db, version) async {
           await db.execute(
-            'ALTER TABLE photos ADD COLUMN prismaPhotoId INTEGER',
+            "CREATE TABLE photos (id TEXT PRIMARY KEY,localPath TEXT NOT NULL,timestamp INTEGER NOT NULL,status TEXT NOT NULL,driveFileId TEXT,driveUploadError TEXT,prismaPhotoId INTEGER,uploadError TEXT,accountScope TEXT NOT NULL,ownerId TEXT NOT NULL,schoolId INTEGER NOT NULL,server TEXT NOT NULL,classId INTEGER NOT NULL,tagIds TEXT NOT NULL DEFAULT '[]',tagSyncPending INTEGER NOT NULL DEFAULT 0)",
           );
-          await db.execute('ALTER TABLE photos ADD COLUMN uploadError TEXT');
-        }
-      },
+          await db.execute(
+            'CREATE TABLE logs (id INTEGER PRIMARY KEY AUTOINCREMENT,timestamp INTEGER NOT NULL,message TEXT NOT NULL,details TEXT)',
+          );
+        },
+        onUpgrade: (db, oldVersion, newVersion) async {
+          if (oldVersion < 2) {
+            await db.execute(
+              'ALTER TABLE photos ADD COLUMN driveUploadError TEXT',
+            );
+          }
+          if (oldVersion < 3) {
+            await db.execute(
+              "ALTER TABLE photos ADD COLUMN tagIds TEXT NOT NULL DEFAULT '[]'",
+            );
+          }
+          if (oldVersion < 4) {
+            await db.execute(
+              'ALTER TABLE photos ADD COLUMN tagSyncPending INTEGER NOT NULL DEFAULT 0',
+            );
+          }
+        },
+      ),
     );
   }
 
   Future<void> savePhoto(Photo photo) async {
-    final db = await database;
-    await db.insert(
+    if (photo.accountScope != scope ||
+        photo.classId == null ||
+        photo.ownerId == null ||
+        photo.schoolId == null ||
+        photo.server == null) {
+      throw StateError('A foto não pertence a esta conta ou não possui turma.');
+    }
+    await (await database).insert(
       'photos',
       photo.toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 
-  Future<List<Photo>> getPhotos() async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      'photos',
-      orderBy: 'timestamp DESC',
-    );
-
-    final appDir = await getApplicationDocumentsDirectory();
-
-    return List.generate(maps.length, (i) {
-      final photo = Photo.fromMap(maps[i]);
-      final filename = photo.localPath.split('/').last;
-      final correctPath = '${appDir.path}/$filename';
-
-      return Photo(
-        id: photo.id,
-        localPath: correctPath,
-        timestamp: photo.timestamp,
-        status: photo.status,
-        driveFileId: photo.driveFileId,
-        prismaPhotoId: photo.prismaPhotoId,
-        uploadError: photo.uploadError,
-      );
-    });
-  }
-
+  Future<List<Photo>> getPhotos() async => (await (await database).query(
+    'photos',
+    where: 'accountScope = ?',
+    whereArgs: [scope],
+    orderBy: 'timestamp DESC',
+  )).map(Photo.fromMap).toList();
+  Future<void> recoverInterruptedUploads() async => (await database).update(
+    'photos',
+    {'status': 'pending'},
+    where: 'accountScope = ? AND status = ?',
+    whereArgs: [scope, 'syncing'],
+  );
   Future<void> updatePhotoStatus(
     String id,
     SyncStatus status, {
@@ -107,47 +89,69 @@ class DbService {
     int? prismaPhotoId,
     String? uploadError,
   }) async {
-    final db = await database;
-    final Map<String, Object?> updates = {'status': status.name};
-    if (driveFileId != null) {
-      updates['driveFileId'] = driveFileId;
-    }
-    if (prismaPhotoId != null) updates['prismaPhotoId'] = prismaPhotoId;
-    updates['uploadError'] = uploadError;
-    await db.update('photos', updates, where: 'id = ?', whereArgs: [id]);
-  }
-
-  Future<void> deletePhoto(String id) async {
-    final db = await database;
-    await db.delete('photos', where: 'id = ?', whereArgs: [id]);
-  }
-
-  Future<void> clearSyncedPhotos() async {
-    final db = await database;
-    // We should delete the files also? Better handle it at logic level when clearSynced is called
-    await db.delete(
+    await (await database).update(
       'photos',
-      where: 'status = ?',
-      whereArgs: [SyncStatus.synced.name],
+      {
+        'status': status.name,
+        'uploadError': uploadError,
+        'driveFileId': ?driveFileId,
+        'prismaPhotoId': ?prismaPhotoId,
+      },
+      where: 'id = ? AND accountScope = ?',
+      whereArgs: [id, scope],
     );
   }
 
-  Future<void> saveLog(String message, String? details) async {
-    final db = await database;
-    await db.insert('logs', {
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-      'message': message,
-      'details': details,
-    });
+  Future<void> deletePhoto(String id) async => (await database).delete(
+    'photos',
+    where: 'id = ? AND accountScope = ?',
+    whereArgs: [id, scope],
+  );
+  Future<void> movePhoto(String id, int classId) async =>
+      (await database).update(
+        'photos',
+        {'classId': classId},
+        where: 'id = ? AND accountScope = ?',
+        whereArgs: [id, scope],
+      );
+  Future<void> saveTagIds(String id, List<int> ids) async =>
+      (await database).update(
+        'photos',
+        {'tagIds': jsonEncode(ids)},
+        where: 'id = ? AND accountScope = ?',
+        whereArgs: [id, scope],
+      );
+  Future<void> setTagSyncPending(String id, bool value) async =>
+      (await database).update(
+        'photos',
+        {'tagSyncPending': value ? 1 : 0},
+        where: 'id = ? AND accountScope = ?',
+        whereArgs: [id, scope],
+      );
+  Future<void> updateDriveUpload(
+    String id, {
+    String? driveFileId,
+    String? error,
+  }) async {
+    await (await database).update(
+      'photos',
+      {'driveFileId': driveFileId, 'driveUploadError': error},
+      where: 'id = ? AND accountScope = ?',
+      whereArgs: [id, scope],
+    );
   }
 
-  Future<List<Map<String, dynamic>>> getLogs() async {
-    final db = await database;
-    return await db.query('logs', orderBy: 'timestamp DESC');
-  }
-
-  Future<void> clearLogs() async {
-    final db = await database;
-    await db.delete('logs');
+  Future<void> saveLog(String message, String? details) async =>
+      (await database).insert('logs', {
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+        'message': message,
+        'details': details,
+      });
+  Future<List<Map<String, dynamic>>> getLogs() async =>
+      (await database).query('logs', orderBy: 'timestamp DESC');
+  Future<void> clearLogs() async => (await database).delete('logs');
+  Future<void> close() async {
+    if (_opening != null) await _opening;
+    await _database?.close();
   }
 }

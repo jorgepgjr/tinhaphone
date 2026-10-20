@@ -75,3 +75,5 @@ coverage/
 keys/
 .env*
 !.env.example
+# Diagnósticos locais da JVM, que podem conter dados privados e não fazem parte do app.
+*.hprof
