@@ -9,7 +9,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Tinhaphone</string>
+	<string>TinhaKids</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -50,14 +50,14 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Tinhaphone needs camera access to capture photos.</string>
+	<string>O TinhaKids usa a câmera para o professor registrar a rotina escolar.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Tinhaphone needs microphone access for video capture.</string>
+	<string>O TinhaKids precisa de acesso ao microfone ao gravar vídeos.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
@@ -78,7 +78,7 @@
 		<string>INSendMessageIntent</string>
 	</array>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Tinhaphone precisa de acesso à galeria para receber fotos compartilhadas.</string>
+	<string>O TinhaKids recebe fotos compartilhadas pelo professor.</string>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<false/>
 	<key>CFBundleDocumentTypes</key>

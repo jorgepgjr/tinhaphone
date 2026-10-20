@@ -3,14 +3,15 @@ import 'package:flutter/services.dart';
 import '../services/db_service.dart';
 
 class ErrorLogsScreen extends StatefulWidget {
-  const ErrorLogsScreen({super.key});
+  final DbService database;
+  const ErrorLogsScreen({super.key, required this.database});
 
   @override
   State<ErrorLogsScreen> createState() => _ErrorLogsScreenState();
 }
 
 class _ErrorLogsScreenState extends State<ErrorLogsScreen> {
-  final DbService _dbService = DbService();
+  DbService get _dbService => widget.database;
   List<Map<String, dynamic>> _logs = [];
   List<Map<String, dynamic>> _filteredLogs = [];
   bool _isLoading = true;
@@ -35,12 +36,14 @@ class _ErrorLogsScreenState extends State<ErrorLogsScreen> {
     });
     try {
       final logs = await _dbService.getLogs();
+      if (!mounted) return;
       setState(() {
         _logs = logs;
         _filteredLogs = logs;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
       });

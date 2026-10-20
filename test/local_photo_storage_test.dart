@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tinhaphone/models/photo.dart';
 import 'package:tinhaphone/services/local_photo_storage.dart';
 import 'package:tinhaphone/services/prisma_api_service.dart';
+import 'support/session_fixtures.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -106,28 +107,16 @@ void main() {
   test(
     'limpeza vem desligada e a escolha persiste com as configurações',
     () async {
-      final api = PrismaApiService();
+      final api = PrismaApiService(teacherSession);
       expect((await api.loadConfig()).autoDeleteSynced, isFalse);
       await api.saveConfig(
-        const PrismaConfig(
-          baseUrl: 'http://localhost:8000',
-          email: 'professor@teste.com',
-          password: 'teste',
-          classId: 3,
-          autoDeleteSynced: true,
-        ),
+        const PrismaConfig(classId: 3, autoDeleteSynced: true),
       );
       final config = await api.loadConfig();
       expect(config.autoDeleteSynced, isTrue);
       expect(config.classId, 3);
       await api.saveConfig(
-        PrismaConfig(
-          baseUrl: config.baseUrl,
-          email: config.email,
-          password: config.password,
-          classId: config.classId,
-          autoDeleteSynced: false,
-        ),
+        PrismaConfig(classId: config.classId, autoDeleteSynced: false),
       );
       expect((await api.loadConfig()).autoDeleteSynced, isFalse);
     },

@@ -41,8 +41,9 @@ Future<String> _applyWatermarkToImage(Map<String, dynamic> params) async {
 
 class CameraScreen extends StatefulWidget {
   final Future<Photo?> Function(XFile) onCapture;
+  final DbService database;
 
-  const CameraScreen({super.key, required this.onCapture});
+  const CameraScreen({super.key, required this.onCapture, required this.database});
 
   @override
   _CameraScreenState createState() => _CameraScreenState();
@@ -414,9 +415,9 @@ class _CameraScreenState extends State<CameraScreen> {
                 if (zoomLevel != _currentZoomLevel) {
                   setState(() {
                     _currentZoomLevel = zoomLevel;
-                    if (zoomLevel >= 2.0)
+                    if (zoomLevel >= 2.0) {
                       _activeZoomMode = 2.0;
-                    else if (zoomLevel <= 0.6)
+                    } else if (zoomLevel <= 0.6)
                       _activeZoomMode = 0.5;
                     else
                       _activeZoomMode = 1.0;
@@ -481,7 +482,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   _lastPhoto != null
                       ? GestureDetector(
                           onTap: () async {
-                            final dbService = DbService();
+                            final dbService = widget.database;
                             final photos = await dbService.getPhotos();
                             final initialIndex = photos.indexWhere(
                               (p) => p.id == _lastPhoto!.id,
@@ -493,6 +494,7 @@ class _CameraScreenState extends State<CameraScreen> {
                               context,
                               MaterialPageRoute(
                                 builder: (context) => PhotoViewerScreen(
+                                  database: widget.database,
                                   photos: photos,
                                   initialIndex: initialIndex != -1
                                       ? initialIndex
@@ -520,6 +522,7 @@ class _CameraScreenState extends State<CameraScreen> {
                         )
                       : const SizedBox(width: 50, height: 50),
                   GestureDetector(
+                    key: const Key('capture_photo'),
                     onTap: _takePicture,
                     child: Container(
                       width: 80,
